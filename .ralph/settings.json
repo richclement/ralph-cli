@@ -1,5 +1,5 @@
 {
-  "maximumIterations": 20,
+  "maximumIterations": 10,
   "completionResponse": "DONE",
   "outputTruncateChars": 50000,
   "agent": {

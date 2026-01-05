@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -27,6 +28,7 @@ type Result struct {
 	Guardrail config.Guardrail
 	Output    string
 	Success   bool
+	ExitCode  int
 	LogFile   string
 }
 
@@ -56,20 +58,42 @@ func (r *Runner) Run(ctx context.Context, g config.Guardrail, iteration int) Res
 		Guardrail: g,
 	}
 
+	r.print("Guardrail start: %s", g.Command)
+
 	// Run the command
 	output, err := agent.RunShell(ctx, g.Command, false, r.Stdout, r.Stderr)
 	result.Output = output
 	result.Success = err == nil
 
+	// Extract exit code from error
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			result.ExitCode = exitErr.ExitCode()
+		} else {
+			result.ExitCode = 1 // Default to 1 for non-exit errors
+		}
+	}
+
 	// Write full output to log file
 	slug := GenerateSlug(g.Command)
-	logFile := filepath.Join(r.OutputDir, fmt.Sprintf("guardrail_%d_%s.log", iteration, slug))
+	logFile := filepath.Join(r.OutputDir, fmt.Sprintf("guardrail_%03d_%s.log", iteration, slug))
 	if writeErr := os.WriteFile(logFile, []byte(output), 0644); writeErr != nil {
 		_, _ = fmt.Fprintf(r.Stderr, "[ralph] warning: failed to write guardrail log: %v\n", writeErr)
 	}
 	result.LogFile = logFile
 
+	if result.Success {
+		r.print("Guardrail end: %s (exit 0)", g.Command)
+	} else {
+		r.print("Guardrail end: %s (exit %d, action=%s)", g.Command, result.ExitCode, g.FailAction)
+	}
+
 	return result
+}
+
+// print writes status output that should always be visible.
+func (r *Runner) print(format string, args ...interface{}) {
+	_, _ = fmt.Fprintf(r.Stderr, format+"\n", args...)
 }
 
 // RunAll executes all guardrails and returns results.
@@ -132,6 +156,7 @@ func GenerateSlug(command string) string {
 }
 
 // GetFailedOutputForPrompt returns truncated failed output formatted for the next prompt.
+// Deprecated: Use GetFailedResults and FormatFailureMessage instead for proper failAction handling.
 func GetFailedOutputForPrompt(results []Result, truncateLimit int) string {
 	var parts []string
 	for _, r := range results {
@@ -141,4 +166,25 @@ func GetFailedOutputForPrompt(results []Result, truncateLimit int) string {
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// GetFailedResults returns only the failed results from a list of guardrail results.
+func GetFailedResults(results []Result) []Result {
+	var failed []Result
+	for _, r := range results {
+		if !r.Success {
+			failed = append(failed, r)
+		}
+	}
+	return failed
+}
+
+// FormatFailureMessage formats a single guardrail failure for inclusion in the prompt.
+// Includes exit code, log file path, and truncated output (matching Python behavior).
+func FormatFailureMessage(result Result, truncateLimit int) string {
+	truncated := TruncateOutput(result.Output, truncateLimit)
+	return fmt.Sprintf(`Guardrail "%s" failed with exit code %d.
+Output file: %s
+Output (truncated):
+%s`, result.Guardrail.Command, result.ExitCode, result.LogFile, truncated)
 }

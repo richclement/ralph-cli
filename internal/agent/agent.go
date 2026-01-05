@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -11,6 +12,11 @@ import (
 	"strings"
 
 	"github.com/richclement/ralph-cli/internal/config"
+)
+
+const (
+	// RalphDir is the directory where ralph stores its files.
+	RalphDir = ".ralph"
 )
 
 // Runner executes agent commands.
@@ -30,9 +36,24 @@ func NewRunner(settings *config.Settings) *Runner {
 }
 
 // Run executes the agent with the given prompt and returns the combined output.
-func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
-	args := r.buildArgs(prompt)
-	cmd := exec.CommandContext(ctx, r.Settings.Agent.Command, args...)
+// The iteration parameter is used for naming prompt files (for Codex).
+func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string, error) {
+	args, promptFile := r.buildArgs(prompt, iteration)
+
+	// Build the full command string for shell execution with proper quoting
+	cmdParts := []string{r.Settings.Agent.Command}
+	for _, arg := range args {
+		cmdParts = append(cmdParts, shellQuote(arg))
+	}
+	cmdStr := strings.Join(cmdParts, " ")
+
+	// Use user's shell with -ic to support aliases and functions
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "sh"
+	}
+
+	cmd := exec.CommandContext(ctx, shell, "-ic", cmdStr)
 
 	var outputBuf bytes.Buffer
 
@@ -50,18 +71,36 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 	cmd.Stdin = nil
 
 	err := cmd.Run()
+
+	// Clean up prompt file if it was created
+	if promptFile != "" {
+		_ = os.Remove(promptFile)
+	}
+
 	return outputBuf.String(), err
 }
 
+// shellQuote quotes a string for safe use in shell commands.
+func shellQuote(s string) string {
+	// If string contains no special characters, return as-is
+	if !strings.ContainsAny(s, " \t\n'\"\\$`!*?[]{}()#<>&|;") {
+		return s
+	}
+	// Use single quotes, escaping any single quotes in the string
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
+}
+
 // buildArgs constructs the argument list for the agent command.
-func (r *Runner) buildArgs(prompt string) []string {
+// Returns the args and the path to any prompt file created (empty if none).
+func (r *Runner) buildArgs(prompt string, iteration int) ([]string, string) {
 	var args []string
+	var promptFile string
 
 	// Infer non-REPL flag based on command name
 	cmdName := filepath.Base(r.Settings.Agent.Command)
 	cmdName = strings.TrimSuffix(cmdName, ".exe") // handle Windows
 
-	switch cmdName {
+	switch strings.ToLower(cmdName) {
 	case "claude":
 		args = append(args, "-p")
 	case "codex":
@@ -73,10 +112,22 @@ func (r *Runner) buildArgs(prompt string) []string {
 	// Add user-configured flags
 	args = append(args, r.Settings.Agent.Flags...)
 
-	// Add the prompt
-	args = append(args, prompt)
+	// For Codex with "e" subcommand, write prompt to file (matching Python behavior)
+	if strings.ToLower(cmdName) == "codex" && len(args) > 0 && args[0] == "e" {
+		promptFile = filepath.Join(RalphDir, fmt.Sprintf("prompt_%03d.txt", iteration))
+		if err := os.WriteFile(promptFile, []byte(prompt), 0644); err == nil {
+			args = append(args, promptFile)
+		} else {
+			// Fall back to passing prompt as argument if file write fails
+			args = append(args, prompt)
+			promptFile = ""
+		}
+	} else {
+		// Add the prompt as argument for other agents
+		args = append(args, prompt)
+	}
 
-	return args
+	return args, promptFile
 }
 
 // RunShell executes a shell command and returns combined output.

@@ -1,11 +1,13 @@
-package loop
+package response
 
 import (
 	"regexp"
 	"strings"
 )
 
-var responseTagRegex = regexp.MustCompile(`(?i)<response>(.*?)</response>`)
+// responseTagRegex matches <response>...</response> tags.
+// (?i) = case insensitive, (?s) = DOTALL (. matches newlines)
+var responseTagRegex = regexp.MustCompile(`(?is)<response>(.*?)</response>`)
 
 // ExtractResponse extracts content from the first <response> tag.
 // Returns the content and whether a tag was found.

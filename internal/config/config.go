@@ -2,9 +2,10 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Default values per PRD.
@@ -219,10 +220,31 @@ func (s *Settings) ApplyCLIOverrides(overrides CLIOverrides) {
 	}
 }
 
-// Validate checks that required settings are present.
+// Validate checks that required settings are present and valid.
 func (s *Settings) Validate() error {
 	if s.Agent.Command == "" {
-		return errors.New("agent.command must be configured in settings file")
+		return fmt.Errorf("agent.command must be configured in settings file")
 	}
+
+	if s.MaximumIterations <= 0 {
+		return fmt.Errorf("maximumIterations must be a positive integer, got %d", s.MaximumIterations)
+	}
+
+	if s.OutputTruncateChars <= 0 {
+		return fmt.Errorf("outputTruncateChars must be a positive integer, got %d", s.OutputTruncateChars)
+	}
+
+	// Validate guardrails
+	validActions := map[string]bool{"APPEND": true, "PREPEND": true, "REPLACE": true}
+	for i, g := range s.Guardrails {
+		if g.Command == "" {
+			return fmt.Errorf("guardrails[%d].command must not be empty", i)
+		}
+		action := strings.ToUpper(g.FailAction)
+		if !validActions[action] {
+			return fmt.Errorf("guardrails[%d].failAction must be APPEND, PREPEND, or REPLACE, got %q", i, g.FailAction)
+		}
+	}
+
 	return nil
 }
