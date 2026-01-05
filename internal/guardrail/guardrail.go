@@ -65,7 +65,7 @@ func (r *Runner) Run(ctx context.Context, g config.Guardrail, iteration int) Res
 	slug := GenerateSlug(g.Command)
 	logFile := filepath.Join(r.OutputDir, fmt.Sprintf("guardrail_%d_%s.log", iteration, slug))
 	if writeErr := os.WriteFile(logFile, []byte(output), 0644); writeErr != nil {
-		fmt.Fprintf(r.Stderr, "[ralph] warning: failed to write guardrail log: %v\n", writeErr)
+		_, _ = fmt.Fprintf(r.Stderr, "[ralph] warning: failed to write guardrail log: %v\n", writeErr)
 	}
 	result.LogFile = logFile
 

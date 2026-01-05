@@ -120,6 +120,6 @@ func extractCommitMessage(output string) string {
 // log writes verbose output.
 func (r *Runner) log(format string, args ...interface{}) {
 	if r.Verbose {
-		fmt.Fprintf(r.Stderr, "[ralph] "+format+"\n", args...)
+		_, _ = fmt.Fprintf(r.Stderr, "[ralph] "+format+"\n", args...)
 	}
 }

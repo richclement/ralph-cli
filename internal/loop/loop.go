@@ -78,7 +78,7 @@ func (r *Runner) Run(ctx context.Context) int {
 		// Build the prompt
 		prompt, err := r.buildPrompt(failedGuardrailOutput)
 		if err != nil {
-			fmt.Fprintf(r.opts.Stderr, "error: failed to read prompt file: %v\n", err)
+			_, _ = fmt.Fprintf(r.opts.Stderr, "error: failed to read prompt file: %v\n", err)
 			return ExitConfigError
 		}
 
@@ -165,6 +165,6 @@ func (r *Runner) buildPrompt(failedGuardrailOutput string) (string, error) {
 // log writes verbose output.
 func (r *Runner) log(format string, args ...interface{}) {
 	if r.opts.Verbose {
-		fmt.Fprintf(r.opts.Stderr, "[ralph] "+format+"\n", args...)
+		_, _ = fmt.Fprintf(r.opts.Stderr, "[ralph] "+format+"\n", args...)
 	}
 }
