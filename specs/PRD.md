@@ -202,16 +202,26 @@ result: {"agent": {"command": "claude", "flags": ["--verbose"]}}
 ## Loop Behavior
 
 For each iteration:
-1. Build prompt (base prompt plus any guardrail feedback).
-2. Invoke the agent with configured command and flags.
+1. Build the base prompt:
+   - If `--prompt` is provided, use it.
+   - If `--prompt-file` is provided, re-read the file on each iteration.
+2. If any guardrail failed in the previous iteration and its `failAction` is `APPEND` or `PREPEND`, add the failed guardrail output to the base prompt.
+   - Separate new text from existing text with two newlines.
+3. Invoke the agent with configured command and flags.
    - Always capture full agent output for completion detection.
    - If `streamAgentOutput` is enabled, tee the agent output to the console as it arrives (use `io.TeeReader` or similar).
-3. Run guardrails after the agent response.
-4. Save each guardrail output to `./.ralph/guardrail_<iter>_<slug>.log`.
-5. If a guardrail fails, apply its `failAction` to the next prompt.
-6. Check for completion response and stop if matched.
+4. Run guardrails after the agent response.
+5. Save each guardrail output to `./.ralph/guardrail_<iter>_<slug>.log`.
+6. If guardrails failed, apply their `failAction` to the next prompt and continue the loop.
+7. If all guardrails pass, check for completion response and stop if matched.
 
 If max iterations is reached without completion, exit non-zero (exit code 1).
+
+**Prompt Construction:**
+- `--prompt` uses the value as-is.
+- `--prompt-file` is re-read each iteration to construct the base prompt.
+- If any guardrail failed in the previous iteration and its `failAction` is `APPEND` or `PREPEND`, include the failed guardrail output in the next prompt.
+- Separate appended/prepended guardrail text from existing prompt text with two newlines.
 
 ---
 
@@ -221,6 +231,7 @@ If max iterations is reached without completion, exit non-zero (exit code 1).
 - Case-insensitive exact match against `completionResponse`.
 - If multiple tags, the first match wins.
 - Use `regexp.MustCompile(`(?i)<response>(.*?)</response>`)` for extraction.
+- Completion detection occurs only after guardrails pass for that iteration.
 
 ---
 
@@ -237,7 +248,8 @@ Each guardrail has:
 Detect OS at runtime using `runtime.GOOS`.
 
 On failure:
-- Always write full output to a file under `./.ralph/`.
+- A failure is a non-zero exit code.
+- Always write full output (stdout+stderr) to a file under `./.ralph/`.
 - Truncate output sent to the agent to `outputTruncateChars` (default 5000).
 - Print guardrail start/end, exit status, and fail action used.
 
@@ -248,6 +260,7 @@ On failure:
 Optional. If configured and guardrails pass:
 1. Ask agent for a commit message (short, imperative).
 2. Run `scm.command` with each task in order (e.g., `commit`, `push`).
+   - For commit, use `-am` with the agent-provided message (e.g., `git commit -am "<message>"`).
 
 If guardrails fail, SCM tasks do not run.
 
