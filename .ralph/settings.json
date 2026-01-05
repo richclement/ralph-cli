@@ -1,0 +1,15 @@
+{
+  "maximumIterations": 20,
+  "completionResponse": "DONE",
+  "outputTruncateChars": 50000,
+  "agent": {
+    "command": "codex",
+    "flags": ["--sandbox workspace-write"]
+  },
+  "guardrails": [
+  ],
+  "scm": {
+    "command": "git",
+    "tasks": ["commit"]
+  }
+}
