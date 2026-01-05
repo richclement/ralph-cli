@@ -6,14 +6,14 @@ intent, scope, and clear completion checks.
 
 ## 0. Repo and Tooling Baseline
 
-### Task 0.1: Initialize Go module
+### Task 0.1: Initialize Go module [DONE]
 - **Intent**: Ensure the module path matches the PRD.
 - **Work**:
   - Run `go mod init github.com/richclement/ralph-cli`.
 - **Done when**:
   - `go.mod` exists with module path `github.com/richclement/ralph-cli`.
 
-### Task 0.2: Create project folders
+### Task 0.2: Create project folders [DONE]
 - **Intent**: Establish the directory layout for packages and entry point.
 - **Work**:
   - Create `cmd/ralph` and `internal/{config,agent,guardrail,loop,scm}`.
@@ -21,7 +21,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - `cmd/ralph` and all `internal/*` folders exist.
 
-### Task 0.3: Add base `.gitignore`
+### Task 0.3: Add base `.gitignore` [DONE]
 - **Intent**: Keep generated files out of git.
 - **Work**:
   - Add `.gitignore` with entries from PRD.
@@ -29,7 +29,7 @@ intent, scope, and clear completion checks.
   - `.gitignore` contains patterns for `ralph`, `dist/`, `.ralph/*.log`,
     IDE files, `vendor/`, `.DS_Store`.
 
-### Task 0.4: Add `.golangci.yml`
+### Task 0.4: Add `.golangci.yml` [DONE]
 - **Intent**: Standardize lint configuration.
 - **Work**:
   - Create `.golangci.yml` with linters: `gofmt`, `govet`, `errcheck`,
@@ -37,7 +37,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Linter config file is present and valid YAML.
 
-### Task 0.5: Add Makefile
+### Task 0.5: Add Makefile [DONE]
 - **Intent**: Provide standard build/test/lint targets.
 - **Work**:
   - Create targets: `build`, `test`, `lint`, `fmt`, `clean`, `install`, `all`.
@@ -45,14 +45,14 @@ intent, scope, and clear completion checks.
   - `make build` builds `./ralph`.
   - `make test` runs `go test ./...`.
 
-### Task 0.6: Add dependencies
+### Task 0.6: Add dependencies [DONE]
 - **Intent**: Bring in CLI parsing library.
 - **Work**:
   - Add `github.com/alecthomas/kong` to `go.mod`.
 - **Done when**:
   - `go.mod` lists kong; `go.sum` updated.
 
-### Task 0.7: Create runtime directory
+### Task 0.7: Create runtime directory [DONE]
 - **Intent**: Ensure `.ralph/` directory exists for guardrail logs.
 - **Work**:
   - Create `.ralph/` directory at startup if it does not exist.
@@ -65,7 +65,7 @@ intent, scope, and clear completion checks.
 
 ## 1. CLI and Entry Point
 
-### Task 1.1: Define CLI struct and validation
+### Task 1.1: Define CLI struct and validation [DONE]
 - **Intent**: Match the PRD CLI interface.
 - **Work**:
   - Create `cmd/ralph/main.go` with `CLI` struct and kong annotations.
@@ -74,7 +74,7 @@ intent, scope, and clear completion checks.
   - Running `ralph --help` shows all flags.
   - Supplying both or neither prompt sources exits with code 2.
 
-### Task 1.2: Wire version flag
+### Task 1.2: Wire version flag [DONE]
 - **Intent**: Support build-time versioning.
 - **Work**:
   - Add `var version = "dev"` and pass to kong via `kong.Vars`.
@@ -82,7 +82,7 @@ intent, scope, and clear completion checks.
   - `ralph --version` prints `dev` by default.
   - `go build -ldflags "-X main.version=1.0.0"` changes version output.
 
-### Task 1.3: CLI to config mapping
+### Task 1.3: CLI to config mapping [DONE]
 - **Intent**: Translate CLI options into runtime settings.
 - **Work**:
   - Map CLI fields to the final `Settings` struct (override base).
@@ -90,7 +90,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - CLI values override settings file values when both are set.
 
-### Task 1.4: Prompt file validation
+### Task 1.4: Prompt file validation [DONE]
 - **Intent**: Validate prompt file exists and is readable when specified.
 - **Work**:
   - If `--prompt-file` is provided, verify file exists at startup.
@@ -103,7 +103,7 @@ intent, scope, and clear completion checks.
 
 ## 2. Configuration Loading and Merging
 
-### Task 2.1: Define settings structs
+### Task 2.1: Define settings structs [DONE]
 - **Intent**: Provide typed configuration representation.
 - **Work**:
   - Create `internal/config/config.go` with `Settings`, `AgentConfig`,
@@ -111,7 +111,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Structs match PRD JSON fields and tags exactly.
 
-### Task 2.2: Load base settings file
+### Task 2.2: Load base settings file [DONE]
 - **Intent**: Read `./.ralph/settings.json` if present.
 - **Work**:
   - Implement `LoadSettings(path string) (Settings, error)`.
@@ -119,7 +119,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Missing file does not error; defaults are used.
 
-### Task 2.3: Merge local override file
+### Task 2.3: Merge local override file [DONE]
 - **Intent**: Merge `./.ralph/settings.local.json` if present.
 - **Work**:
   - Implement deep merge rules (scalars override, arrays replace,
@@ -127,7 +127,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Example in PRD produces expected merged result.
 
-### Task 2.4: Apply CLI overrides
+### Task 2.4: Apply CLI overrides [DONE]
 - **Intent**: Highest-priority CLI values override merged settings.
 - **Work**:
   - Apply overrides after local merge.
@@ -135,7 +135,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - CLI values take precedence without losing other settings.
 
-### Task 2.5: Defaults and validation
+### Task 2.5: Defaults and validation [DONE]
 - **Intent**: Ensure required defaults are set and required fields present.
 - **Work**:
   - Set defaults for maximumIterations, completionResponse,
@@ -150,7 +150,7 @@ intent, scope, and clear completion checks.
 
 ## 3. Agent Execution
 
-### Task 3.1: Agent runner interface
+### Task 3.1: Agent runner interface [DONE]
 - **Intent**: Encapsulate command invocation and output capture.
 - **Work**:
   - Create `internal/agent/agent.go` with a function like
@@ -158,7 +158,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - The runner returns full output and respects context cancellation.
 
-### Task 3.2: Command inference for non-REPL mode
+### Task 3.2: Command inference for non-REPL mode [DONE]
 - **Intent**: Add default flags based on agent command name.
 - **Work**:
   - If agent command is `claude`, add `-p`.
@@ -167,7 +167,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Inferred flag appears before user-provided flags in execution.
 
-### Task 3.3: Streaming output support
+### Task 3.3: Streaming output support [DONE]
 - **Intent**: Stream agent output to console while capturing.
 - **Work**:
   - If `streamAgentOutput` is true, tee stdout/stderr to console.
@@ -179,7 +179,7 @@ intent, scope, and clear completion checks.
 
 ## 4. Guardrails
 
-### Task 4.1: Guardrail execution function
+### Task 4.1: Guardrail execution function [DONE]
 - **Intent**: Run shell commands across OSes.
 - **Work**:
   - Create `internal/guardrail/guardrail.go`.
@@ -187,7 +187,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - A guardrail command runs correctly on the current OS.
 
-### Task 4.2: Guardrail output capture and logging
+### Task 4.2: Guardrail output capture and logging [DONE]
 - **Intent**: Persist logs and truncate prompt feedback.
 - **Work**:
   - Write full output to `./.ralph/guardrail_<iter>_<slug>.log`.
@@ -195,14 +195,14 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Log file contains full output and truncated output respects limit.
 
-### Task 4.3: Fail action handling
+### Task 4.3: Fail action handling [DONE]
 - **Intent**: Implement APPEND, PREPEND, REPLACE behavior.
 - **Work**:
   - Provide helper to apply fail action to prompt text.
 - **Done when**:
   - Each action matches PRD behavior with two newline separator.
 
-### Task 4.4: Guardrail slug generation
+### Task 4.4: Guardrail slug generation [DONE]
 - **Intent**: Generate filesystem-safe slug from guardrail command.
 - **Work**:
   - Derive slug from command for log filename `guardrail_<iter>_<slug>.log`.
@@ -213,7 +213,7 @@ intent, scope, and clear completion checks.
   - Commands like `./mvnw clean install -T 2C` produce slug `mvnw_clean_install_T_2C`.
   - Special characters and spaces are sanitized.
 
-### Task 4.5: Output truncation behavior
+### Task 4.5: Output truncation behavior [DONE]
 - **Intent**: Define how truncation works for guardrail output.
 - **Work**:
   - Truncate from end of output (keep first N chars).
@@ -226,7 +226,7 @@ intent, scope, and clear completion checks.
 
 ## 5. Completion Detection
 
-### Task 5.1: Implement regex extraction
+### Task 5.1: Implement regex extraction [DONE]
 - **Intent**: Detect completion response tags.
 - **Work**:
   - Use `(?i)<response>(.*?)</response>` with first match.
@@ -238,7 +238,7 @@ intent, scope, and clear completion checks.
 
 ## 6. Loop Orchestration
 
-### Task 6.1: Core loop control
+### Task 6.1: Core loop control [DONE]
 - **Intent**: Drive iterations and exit codes.
 - **Work**:
   - Create `internal/loop/loop.go`.
@@ -246,7 +246,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Loop stops on completion or max iterations.
 
-### Task 6.2: Prompt construction
+### Task 6.2: Prompt construction [DONE]
 - **Intent**: Build per-iteration prompt with guardrail feedback.
 - **Work**:
   - Read prompt file every iteration if used.
@@ -254,7 +254,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Prompt updates reflect latest file and failure feedback.
 
-### Task 6.3: Guardrail gating
+### Task 6.3: Guardrail gating [DONE]
 - **Intent**: Ensure completion is only checked when guardrails pass.
 - **Work**:
   - Run guardrails after agent output.
@@ -266,7 +266,7 @@ intent, scope, and clear completion checks.
 
 ## 7. SCM Tasks
 
-### Task 7.1: SCM task runner
+### Task 7.1: SCM task runner [DONE]
 - **Intent**: Run SCM tasks when guardrails pass.
 - **Work**:
   - Create `internal/scm/scm.go`.
@@ -274,7 +274,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Tasks run only after guardrails pass.
 
-### Task 7.2: Commit message flow
+### Task 7.2: Commit message flow [DONE]
 - **Intent**: Obtain message from agent and use for commit.
 - **Work**:
   - Invoke agent using same mechanism as main loop (Task 3.1).
@@ -290,7 +290,7 @@ intent, scope, and clear completion checks.
 
 ## 8. Signal Handling and Context
 
-### Task 8.1: Context propagation
+### Task 8.1: Context propagation [DONE]
 - **Intent**: Support graceful shutdown.
 - **Work**:
   - Create `context.Context` in main and pass through loop, agent,
@@ -298,7 +298,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Cancellation stops further iterations cleanly.
 
-### Task 8.2: Signal handling
+### Task 8.2: Signal handling [DONE]
 - **Intent**: Exit cleanly on SIGINT/SIGTERM.
 - **Work**:
   - Add signal handler per PRD; print shutdown message; exit 130.
@@ -309,7 +309,7 @@ intent, scope, and clear completion checks.
 
 ## 9. Verbose Logging
 
-### Task 9.1: Add verbose logging helper
+### Task 9.1: Add verbose logging helper [DONE]
 - **Intent**: Standardize debug output.
 - **Work**:
   - Provide helper that writes to stderr with `[ralph]` prefix.
@@ -322,35 +322,35 @@ intent, scope, and clear completion checks.
 
 ## 10. Tests
 
-### Task 10.1: Config load/merge tests
+### Task 10.1: Config load/merge tests [DONE]
 - **Intent**: Validate settings precedence rules.
 - **Work**:
   - Add `internal/config/config_test.go` with base/local/CLI cases.
 - **Done when**:
   - Tests cover deep merge behavior for scalars, arrays, objects.
 
-### Task 10.2: CLI validation tests
+### Task 10.2: CLI validation tests [DONE]
 - **Intent**: Ensure prompt selection rules.
 - **Work**:
   - Add tests for mutual exclusion and missing prompt sources.
 - **Done when**:
   - Invalid combinations return exit code 2.
 
-### Task 10.3: Completion detection tests
+### Task 10.3: Completion detection tests [DONE]
 - **Intent**: Ensure response matching logic.
 - **Work**:
   - Test regex extraction and case-insensitive matching.
 - **Done when**:
   - First `<response>` tag is used and matched correctly.
 
-### Task 10.4: Guardrail fail action tests
+### Task 10.4: Guardrail fail action tests [DONE]
 - **Intent**: Verify prompt modification rules.
 - **Work**:
   - Tests for APPEND, PREPEND, REPLACE with separators.
 - **Done when**:
   - Prompt output matches PRD behavior.
 
-### Task 10.5: Output truncation tests
+### Task 10.5: Output truncation tests [DONE]
 - **Intent**: Ensure guardrail output limit.
 - **Work**:
   - Test truncation to `outputTruncateChars`.
@@ -359,7 +359,7 @@ intent, scope, and clear completion checks.
   - Truncated output length is `outputTruncateChars` plus indicator.
   - Indicator only present when truncation occurred.
 
-### Task 10.6: Integration tests
+### Task 10.6: Integration tests [DONE]
 - **Intent**: Verify end-to-end loop behavior.
 - **Work**:
   - Create integration test with mock agent (echo script or similar).
@@ -371,7 +371,7 @@ intent, scope, and clear completion checks.
   - Integration test exercises full loop with mocked commands.
   - Tests verify correct exit codes and prompt construction.
 
-### Task 10.7: Prompt file validation tests
+### Task 10.7: Prompt file validation tests [DONE]
 - **Intent**: Ensure prompt file errors are handled.
 - **Work**:
   - Test missing prompt file returns exit code 2.
@@ -379,7 +379,7 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Invalid prompt file scenarios exit with code 2.
 
-### Task 10.8: Agent command validation tests
+### Task 10.8: Agent command validation tests [DONE]
 - **Intent**: Ensure missing agent command is caught.
 - **Work**:
   - Test that missing `agent.command` in settings exits with code 2.
@@ -391,7 +391,7 @@ intent, scope, and clear completion checks.
 
 ## 11. README Updates
 
-### Task 11.1: Document usage and config
+### Task 11.1: Document usage and config [DONE]
 - **Intent**: Update documentation per PRD.
 - **Work**:
   - Add description, prerequisites, install steps, usage examples,

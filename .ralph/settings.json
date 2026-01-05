@@ -7,6 +7,22 @@
     "flags": ["--sandbox workspace-write"]
   },
   "guardrails": [
+    {
+      "command": "make all",
+      "failAction": "APPEND"
+    },
+    {
+      "command": "make lint",
+      "failAction": "APPEND"
+    },
+    {
+      "command": "make build",
+      "failAction": "APPEND"
+    },
+    {
+      "command": "make test",
+      "failAction": "APPEND"
+    }
   ],
   "scm": {
     "command": "git",

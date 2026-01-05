@@ -1,42 +1,37 @@
-PROMPT.md
-
-# ralph files that should not be kept
-.ralph/prompt*.*
-.ralph/guardrail*.*
-.ralph/settings.local.json
-
-# Claude Code local settings file
-.claude/settings.local.json
-
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
+# Binaries
+ralph
 *.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+dist/
+
+# Runtime
+.ralph/*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Go
+vendor/
+
+# OS
+.DS_Store
 
 # Test binary, built with `go test -c`
 *.test
 
-# Code coverage profiles and other test artifacts
+# Code coverage
 *.out
 coverage.*
 *.coverprofile
-profile.cov
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
+# Go workspace
 go.work
 go.work.sum
 
-# env file
-.env
+# Local config
+.ralph/settings.local.json
+.claude/settings.local.json
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# Prompt file (local use)
+PROMPT.md
