@@ -52,6 +52,15 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - `go.mod` lists kong; `go.sum` updated.
 
+### Task 0.7: Create runtime directory
+- **Intent**: Ensure `.ralph/` directory exists for guardrail logs.
+- **Work**:
+  - Create `.ralph/` directory at startup if it does not exist.
+  - Use `os.MkdirAll` to handle nested creation.
+- **Done when**:
+  - Running ralph creates `.ralph/` if missing.
+  - Guardrail logs can be written without "directory not found" errors.
+
 ---
 
 ## 1. CLI and Entry Point
@@ -80,6 +89,15 @@ intent, scope, and clear completion checks.
   - Support `--stream-agent-output` with negatable form.
 - **Done when**:
   - CLI values override settings file values when both are set.
+
+### Task 1.4: Prompt file validation
+- **Intent**: Validate prompt file exists and is readable when specified.
+- **Work**:
+  - If `--prompt-file` is provided, verify file exists at startup.
+  - Return exit code 2 with descriptive error if file not found or unreadable.
+- **Done when**:
+  - Missing prompt file exits with code 2 and error message.
+  - Unreadable prompt file (permissions) exits with code 2.
 
 ---
 
@@ -118,13 +136,15 @@ intent, scope, and clear completion checks.
   - CLI values take precedence without losing other settings.
 
 ### Task 2.5: Defaults and validation
-- **Intent**: Ensure required defaults are set.
+- **Intent**: Ensure required defaults are set and required fields present.
 - **Work**:
   - Set defaults for maximumIterations, completionResponse,
     outputTruncateChars, streamAgentOutput.
-  - Validate required agent command exists.
+  - Validate `agent.command` is configured; exit code 2 with error if missing.
+  - No default for agent command—it must be explicitly configured.
 - **Done when**:
   - Settings contain defaults when unset in files or CLI.
+  - Missing `agent.command` exits with code 2 and descriptive error message.
 
 ---
 
@@ -182,6 +202,26 @@ intent, scope, and clear completion checks.
 - **Done when**:
   - Each action matches PRD behavior with two newline separator.
 
+### Task 4.4: Guardrail slug generation
+- **Intent**: Generate filesystem-safe slug from guardrail command.
+- **Work**:
+  - Derive slug from command for log filename `guardrail_<iter>_<slug>.log`.
+  - Replace non-alphanumeric characters with underscores.
+  - Truncate slug to reasonable length (e.g., 50 chars) to avoid path issues.
+  - Handle duplicate slugs by appending index if needed.
+- **Done when**:
+  - Commands like `./mvnw clean install -T 2C` produce slug `mvnw_clean_install_T_2C`.
+  - Special characters and spaces are sanitized.
+
+### Task 4.5: Output truncation behavior
+- **Intent**: Define how truncation works for guardrail output.
+- **Work**:
+  - Truncate from end of output (keep first N chars).
+  - Append `... [truncated]` indicator when truncation occurs.
+- **Done when**:
+  - Long output is truncated to `outputTruncateChars` plus indicator.
+  - Indicator only appears when truncation actually happened.
+
 ---
 
 ## 5. Completion Detection
@@ -237,10 +277,14 @@ intent, scope, and clear completion checks.
 ### Task 7.2: Commit message flow
 - **Intent**: Obtain message from agent and use for commit.
 - **Work**:
-  - Prompt agent for short imperative commit message.
-  - For `commit`, run `<cmd> commit -am "<message>"`.
+  - Invoke agent using same mechanism as main loop (Task 3.1).
+  - Use a fixed prompt requesting a short imperative commit message.
+  - Parse agent output to extract commit message (first line or `<response>` tag).
+  - For `commit` task, run `<cmd> commit -am "<message>"`.
+  - If agent fails to provide valid message, use a fallback or abort with error.
 - **Done when**:
   - Commit task uses agent-provided message.
+  - Agent invocation for commit message uses same runner as main loop.
 
 ---
 
@@ -310,8 +354,38 @@ intent, scope, and clear completion checks.
 - **Intent**: Ensure guardrail output limit.
 - **Work**:
   - Test truncation to `outputTruncateChars`.
+  - Verify `... [truncated]` indicator is appended.
 - **Done when**:
-  - Truncated output length is exactly the limit.
+  - Truncated output length is `outputTruncateChars` plus indicator.
+  - Indicator only present when truncation occurred.
+
+### Task 10.6: Integration tests
+- **Intent**: Verify end-to-end loop behavior.
+- **Work**:
+  - Create integration test with mock agent (echo script or similar).
+  - Test full loop: agent → guardrail → completion detection.
+  - Test max iterations exit code 1.
+  - Test successful completion exit code 0.
+  - Test guardrail failure feedback into next iteration.
+- **Done when**:
+  - Integration test exercises full loop with mocked commands.
+  - Tests verify correct exit codes and prompt construction.
+
+### Task 10.7: Prompt file validation tests
+- **Intent**: Ensure prompt file errors are handled.
+- **Work**:
+  - Test missing prompt file returns exit code 2.
+  - Test unreadable prompt file returns exit code 2.
+- **Done when**:
+  - Invalid prompt file scenarios exit with code 2.
+
+### Task 10.8: Agent command validation tests
+- **Intent**: Ensure missing agent command is caught.
+- **Work**:
+  - Test that missing `agent.command` in settings exits with code 2.
+  - Test descriptive error message is printed.
+- **Done when**:
+  - Missing agent command produces exit code 2 and error message.
 
 ---
 

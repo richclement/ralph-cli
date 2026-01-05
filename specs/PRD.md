@@ -251,15 +251,27 @@ On failure:
 - A failure is a non-zero exit code.
 - Always write full output (stdout+stderr) to a file under `./.ralph/`.
 - Truncate output sent to the agent to `outputTruncateChars` (default 5000).
+  - Truncation keeps the first N characters and appends `... [truncated]`.
+  - The indicator is only added when truncation actually occurs.
 - Print guardrail start/end, exit status, and fail action used.
+
+**Log File Naming:**
+- Log files are named `./.ralph/guardrail_<iter>_<slug>.log`.
+- Slug is derived from command: replace non-alphanumeric chars with `_`, truncate to 50 chars.
+- Example: `./mvnw clean install -T 2C` → `mvnw_clean_install_T_2C`.
 
 ---
 
 ## SCM Tasks
 
 Optional. If configured and guardrails pass:
-1. Ask agent for a commit message (short, imperative).
-2. Run `scm.command` with each task in order (e.g., `commit`, `push`).
+1. Invoke the agent (using the same runner as the main loop) with a fixed prompt:
+   `"Provide a short imperative commit message for the changes. Output only the message, no explanation."`
+2. Parse the agent response to extract the commit message:
+   - If response contains `<response>` tag, use its contents.
+   - Otherwise, use the first non-empty line of output.
+   - If no valid message is extracted, abort SCM tasks with an error.
+3. Run `scm.command` with each task in order (e.g., `commit`, `push`).
    - For commit, use `-am` with the agent-provided message (e.g., `git commit -am "<message>"`).
 
 If guardrails fail, SCM tasks do not run.
