@@ -122,3 +122,111 @@ func TestIsComplete(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractFromJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+		found  bool
+	}{
+		{
+			name:   "valid result",
+			output: `{"type":"system"}` + "\n" + `{"type":"result","result":"done","total_cost_usd":0.01}`,
+			want:   "done",
+			found:  true,
+		},
+		{
+			name:   "result in middle",
+			output: "line1\n{\"type\":\"result\",\"result\":\"complete\"}\nline3",
+			want:   "complete",
+			found:  true,
+		},
+		{
+			name:   "no result",
+			output: `{"type":"assistant"}` + "\n" + `{"type":"user"}`,
+			want:   "",
+			found:  false,
+		},
+		{
+			name:   "malformed json",
+			output: `{not json}` + "\n" + `{"type":"result"`,
+			want:   "",
+			found:  false,
+		},
+		{
+			name:   "empty output",
+			output: "",
+			want:   "",
+			found:  false,
+		},
+		{
+			name:   "result with extra fields",
+			output: `{"type":"result","subtype":"success","result":"DONE","total_cost_usd":0.0234}`,
+			want:   "DONE",
+			found:  true,
+		},
+		{
+			name:   "multiple results takes last",
+			output: `{"type":"result","result":"first"}` + "\n" + `{"type":"result","result":"last"}`,
+			want:   "last",
+			found:  true,
+		},
+		{
+			name:   "whitespace around lines",
+			output: "  {\"type\":\"result\",\"result\":\"done\"}  \n",
+			want:   "done",
+			found:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, found := ExtractFromJSON(tt.output)
+			if found != tt.found {
+				t.Errorf("ExtractFromJSON() found = %v, want %v", found, tt.found)
+			}
+			if got != tt.want {
+				t.Errorf("ExtractFromJSON() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsComplete_JSON(t *testing.T) {
+	output := `{"type":"assistant"}` + "\n" + `{"type":"result","result":"done"}`
+
+	if !IsComplete(output, "done") {
+		t.Error("IsComplete should return true for matching result")
+	}
+
+	if !IsComplete(output, "DONE") {
+		t.Error("IsComplete should be case-insensitive")
+	}
+
+	if IsComplete(output, "other") {
+		t.Error("IsComplete should return false for non-matching result")
+	}
+}
+
+func TestIsComplete_Fallback(t *testing.T) {
+	// No JSON result, should fall back to <response> regex
+	output := "Some output\n<response>completed</response>"
+
+	if !IsComplete(output, "completed") {
+		t.Error("IsComplete should fall back to <response> extraction")
+	}
+}
+
+func TestIsComplete_JSONPriority(t *testing.T) {
+	// Both JSON and <response> present - JSON should take priority
+	output := `{"type":"result","result":"json_result"}` + "\n<response>xml_result</response>"
+
+	if !IsComplete(output, "json_result") {
+		t.Error("IsComplete should use JSON result when present")
+	}
+
+	if IsComplete(output, "xml_result") {
+		t.Error("IsComplete should prefer JSON over <response> tag")
+	}
+}

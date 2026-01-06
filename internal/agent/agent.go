@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/richclement/ralph-cli/internal/config"
+	"github.com/richclement/ralph-cli/internal/stream"
 )
 
 const (
@@ -67,7 +69,26 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 
 	var outputBuf bytes.Buffer
 
-	if r.Settings.StreamAgentOutput && runtime.GOOS != "windows" {
+	// Create stream processor if agent supports structured output
+	var proc *stream.Processor
+	if r.Settings.StreamAgentOutput {
+		config := stream.DefaultFormatterConfig(filepath.Base(r.Settings.Agent.Command))
+		formatter := stream.NewFormatter(r.Stdout, config)
+
+		var debugLog *log.Logger
+		if r.Verbose {
+			debugLog = log.New(r.Stderr, "[stream-debug] ", log.LstdFlags)
+		}
+
+		proc = stream.NewProcessor(r.Settings.Agent.Command, formatter, debugLog)
+	}
+	if proc != nil {
+		defer func() { _ = proc.Close() }()
+	}
+
+	// PTY mode: not compatible with structured output parsing (raw bytes)
+	// Only use PTY when we don't have a stream processor
+	if r.Settings.StreamAgentOutput && runtime.GOOS != "windows" && proc == nil {
 		ptmx, err := pty.Start(cmd)
 		if err == nil {
 			copyDone := make(chan error, 1)
@@ -90,9 +111,16 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 	}
 
 	if r.Settings.StreamAgentOutput {
-		// Tee output to both buffer and console
-		cmd.Stdout = io.MultiWriter(&outputBuf, r.Stdout)
-		cmd.Stderr = io.MultiWriter(&outputBuf, r.Stderr)
+		if proc != nil {
+			// Structured output: parse JSON, format events
+			cmd.Stdout = io.MultiWriter(&outputBuf, proc)
+			// Still stream stderr to user for prompts/errors
+			cmd.Stderr = io.MultiWriter(&outputBuf, r.Stderr)
+		} else {
+			// No parser available: raw streaming fallback
+			cmd.Stdout = io.MultiWriter(&outputBuf, r.Stdout)
+			cmd.Stderr = io.MultiWriter(&outputBuf, r.Stderr)
+		}
 	} else {
 		// Capture output only
 		cmd.Stdout = &outputBuf
@@ -103,6 +131,12 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 	cmd.Stdin = nil
 
 	err := cmd.Run()
+
+	// Log stats if verbose
+	if proc != nil && r.Verbose {
+		events, errors := proc.Stats()
+		_, _ = fmt.Fprintf(r.Stderr, "[ralph] stream stats: %d events, %d errors\n", events, errors)
+	}
 
 	return outputBuf.String(), err
 }
@@ -178,6 +212,13 @@ func (r *Runner) buildArgs(prompt string, iteration int) ([]string, string) {
 		args = append(args, "e")
 	case "amp":
 		args = append(args, "-x")
+	}
+
+	// Add structured output flags if streaming is enabled
+	if r.Settings.StreamAgentOutput {
+		if flags := stream.OutputFlags(r.Settings.Agent.Command); flags != nil {
+			args = append(args, flags...)
+		}
 	}
 
 	// Add user-configured flags
