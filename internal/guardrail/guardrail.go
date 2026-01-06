@@ -53,7 +53,14 @@ func NewRunner(outputTruncateChars int, verbose bool) *Runner {
 }
 
 // Run executes a single guardrail and returns the result.
+// Use RunWithSlugTracker to avoid log file collisions when running multiple guardrails.
 func (r *Runner) Run(ctx context.Context, g config.Guardrail, iteration int) Result {
+	return r.RunWithSlugTracker(ctx, g, iteration, nil)
+}
+
+// RunWithSlugTracker executes a single guardrail with slug collision tracking.
+// The slugCounts map tracks how many times each slug has been used.
+func (r *Runner) RunWithSlugTracker(ctx context.Context, g config.Guardrail, iteration int, slugCounts map[string]int) Result {
 	result := Result{
 		Guardrail: g,
 	}
@@ -74,9 +81,9 @@ func (r *Runner) Run(ctx context.Context, g config.Guardrail, iteration int) Res
 		}
 	}
 
-	// Write full output to log file
+	// Write full output to log file with de-duplication
 	slug := GenerateSlug(g.Command)
-	logFile := filepath.Join(r.OutputDir, fmt.Sprintf("guardrail_%03d_%s.log", iteration, slug))
+	logFile := r.generateLogFilename(iteration, slug, slugCounts)
 	if writeErr := os.WriteFile(logFile, []byte(output), 0644); writeErr != nil {
 		_, _ = fmt.Fprintf(r.Stderr, "[ralph] warning: failed to write guardrail log: %v\n", writeErr)
 	}
@@ -91,16 +98,36 @@ func (r *Runner) Run(ctx context.Context, g config.Guardrail, iteration int) Res
 	return result
 }
 
+// generateLogFilename creates a unique log filename, handling duplicate slugs.
+func (r *Runner) generateLogFilename(iteration int, slug string, slugCounts map[string]int) string {
+	if slugCounts == nil {
+		// No tracking, use simple filename
+		return filepath.Join(r.OutputDir, fmt.Sprintf("guardrail_%03d_%s.log", iteration, slug))
+	}
+
+	count := slugCounts[slug]
+	slugCounts[slug] = count + 1
+
+	if count == 0 {
+		// First occurrence, no suffix needed
+		return filepath.Join(r.OutputDir, fmt.Sprintf("guardrail_%03d_%s.log", iteration, slug))
+	}
+	// Duplicate slug, add suffix
+	return filepath.Join(r.OutputDir, fmt.Sprintf("guardrail_%03d_%s_%d.log", iteration, slug, count))
+}
+
 // print writes status output that should always be visible.
 func (r *Runner) print(format string, args ...interface{}) {
 	_, _ = fmt.Fprintf(r.Stderr, format+"\n", args...)
 }
 
 // RunAll executes all guardrails and returns results.
+// Handles duplicate slug collisions by adding index suffixes to log filenames.
 func (r *Runner) RunAll(ctx context.Context, guardrails []config.Guardrail, iteration int) []Result {
 	results := make([]Result, 0, len(guardrails))
+	slugCounts := make(map[string]int)
 	for _, g := range guardrails {
-		result := r.Run(ctx, g, iteration)
+		result := r.RunWithSlugTracker(ctx, g, iteration, slugCounts)
 		results = append(results, result)
 	}
 	return results

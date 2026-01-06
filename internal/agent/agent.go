@@ -42,7 +42,7 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 	args, promptFile := r.buildArgs(prompt, iteration)
 
 	// Build the full command string for shell execution with proper quoting
-	cmdParts := []string{r.Settings.Agent.Command}
+	cmdParts := []string{shellQuote(r.Settings.Agent.Command)}
 	for _, arg := range args {
 		cmdParts = append(cmdParts, shellQuote(arg))
 	}

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -237,6 +238,93 @@ func TestValidate_MissingAgentCommand(t *testing.T) {
 	}
 }
 
+func TestValidate_EmptyCompletionResponse(t *testing.T) {
+	s := NewDefaults()
+	s.Agent.Command = "claude"
+	s.CompletionResponse = ""
+
+	err := s.Validate()
+	if err == nil {
+		t.Error("Validate() should return error for empty completionResponse")
+	}
+	if !strings.Contains(err.Error(), "completionResponse") {
+		t.Errorf("error should mention completionResponse, got: %v", err)
+	}
+}
+
+func TestValidate_ZeroMaximumIterations(t *testing.T) {
+	s := NewDefaults()
+	s.Agent.Command = "claude"
+	s.MaximumIterations = 0
+
+	err := s.Validate()
+	if err == nil {
+		t.Error("Validate() should return error for zero maximumIterations")
+	}
+	if !strings.Contains(err.Error(), "maximumIterations") {
+		t.Errorf("error should mention maximumIterations, got: %v", err)
+	}
+}
+
+func TestValidate_NegativeOutputTruncateChars(t *testing.T) {
+	s := NewDefaults()
+	s.Agent.Command = "claude"
+	s.OutputTruncateChars = -1
+
+	err := s.Validate()
+	if err == nil {
+		t.Error("Validate() should return error for negative outputTruncateChars")
+	}
+	if !strings.Contains(err.Error(), "outputTruncateChars") {
+		t.Errorf("error should mention outputTruncateChars, got: %v", err)
+	}
+}
+
+func TestValidate_SCMTasksWithoutCommand(t *testing.T) {
+	s := NewDefaults()
+	s.Agent.Command = "claude"
+	s.SCM = &SCMConfig{
+		Tasks: []string{"commit", "push"},
+		// Command is empty
+	}
+
+	err := s.Validate()
+	if err == nil {
+		t.Error("Validate() should return error for SCM tasks without command")
+	}
+	if !strings.Contains(err.Error(), "scm.command") {
+		t.Errorf("error should mention scm.command, got: %v", err)
+	}
+}
+
+func TestValidate_SCMWithValidConfig(t *testing.T) {
+	s := NewDefaults()
+	s.Agent.Command = "claude"
+	s.SCM = &SCMConfig{
+		Command: "git",
+		Tasks:   []string{"commit", "push"},
+	}
+
+	err := s.Validate()
+	if err != nil {
+		t.Errorf("Validate() returned unexpected error: %v", err)
+	}
+}
+
+func TestValidate_SCMEmptyTasks(t *testing.T) {
+	s := NewDefaults()
+	s.Agent.Command = "claude"
+	s.SCM = &SCMConfig{
+		Tasks: []string{},
+		// Command empty is OK when tasks are empty
+	}
+
+	err := s.Validate()
+	if err != nil {
+		t.Errorf("Validate() should not error for empty SCM tasks: %v", err)
+	}
+}
+
 func TestValidate_ValidSettings(t *testing.T) {
 	s := NewDefaults()
 	s.Agent.Command = "claude"
@@ -244,5 +332,111 @@ func TestValidate_ValidSettings(t *testing.T) {
 	err := s.Validate()
 	if err != nil {
 		t.Errorf("Validate() returned unexpected error: %v", err)
+	}
+}
+
+func TestDeepMerge_InvalidTypeErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		localJSON string
+		wantErr   string
+	}{
+		{
+			name:      "maximumIterations wrong type",
+			localJSON: `{"maximumIterations": "not-an-int"}`,
+			wantErr:   "maximumIterations:",
+		},
+		{
+			name:      "completionResponse wrong type",
+			localJSON: `{"completionResponse": 123}`,
+			wantErr:   "completionResponse:",
+		},
+		{
+			name:      "outputTruncateChars wrong type",
+			localJSON: `{"outputTruncateChars": "not-an-int"}`,
+			wantErr:   "outputTruncateChars:",
+		},
+		{
+			name:      "streamAgentOutput wrong type",
+			localJSON: `{"streamAgentOutput": "not-a-bool"}`,
+			wantErr:   "streamAgentOutput:",
+		},
+		{
+			name:      "agent wrong type",
+			localJSON: `{"agent": "not-an-object"}`,
+			wantErr:   "agent:",
+		},
+		{
+			name:      "agent.command wrong type",
+			localJSON: `{"agent": {"command": 123}}`,
+			wantErr:   "agent.command:",
+		},
+		{
+			name:      "agent.flags wrong type",
+			localJSON: `{"agent": {"flags": "not-an-array"}}`,
+			wantErr:   "agent.flags:",
+		},
+		{
+			name:      "guardrails wrong type",
+			localJSON: `{"guardrails": "not-an-array"}`,
+			wantErr:   "guardrails:",
+		},
+		{
+			name:      "scm wrong type",
+			localJSON: `{"scm": "not-an-object"}`,
+			wantErr:   "scm:",
+		},
+		{
+			name:      "scm.command wrong type",
+			localJSON: `{"scm": {"command": 123}}`,
+			wantErr:   "scm.command:",
+		},
+		{
+			name:      "scm.tasks wrong type",
+			localJSON: `{"scm": {"tasks": "not-an-array"}}`,
+			wantErr:   "scm.tasks:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewDefaults()
+			err := deepMerge(&s, []byte(tt.localJSON))
+			if err == nil {
+				t.Errorf("deepMerge() should return error for %s", tt.name)
+				return
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("deepMerge() error = %q, want to contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLoadWithLocal_InvalidTypeError(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "settings.json")
+	localPath := filepath.Join(dir, "settings.local.json")
+
+	baseContent := `{
+		"maximumIterations": 10,
+		"agent": {"command": "claude"}
+	}`
+	// Invalid: maximumIterations should be int, not string
+	localContent := `{"maximumIterations": "not-a-number"}`
+
+	if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(localPath, []byte(localContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadWithLocal(basePath)
+	if err == nil {
+		t.Error("LoadWithLocal() should return error for invalid local settings type")
+	}
+	if !strings.Contains(err.Error(), "maximumIterations") {
+		t.Errorf("error should mention maximumIterations, got: %v", err)
 	}
 }

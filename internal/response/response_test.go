@@ -53,6 +53,12 @@ func TestExtractResponse(t *testing.T) {
 			want:      "",
 			wantFound: true,
 		},
+		{
+			name:      "multiline content",
+			output:    "<response>line1\nline2\nline3</response>",
+			want:      "line1\nline2\nline3",
+			wantFound: true,
+		},
 	}
 
 	for _, tt := range tests {

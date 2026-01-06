@@ -136,3 +136,89 @@ func TestApplyFailAction(t *testing.T) {
 		})
 	}
 }
+
+func TestGenerateLogFilename(t *testing.T) {
+	r := &Runner{OutputDir: ".ralph"}
+
+	tests := []struct {
+		name       string
+		iteration  int
+		slug       string
+		slugCounts map[string]int
+		want       string
+	}{
+		{
+			name:       "nil slugCounts",
+			iteration:  1,
+			slug:       "make_test",
+			slugCounts: nil,
+			want:       ".ralph/guardrail_001_make_test.log",
+		},
+		{
+			name:       "first occurrence",
+			iteration:  1,
+			slug:       "make_test",
+			slugCounts: map[string]int{},
+			want:       ".ralph/guardrail_001_make_test.log",
+		},
+		{
+			name:       "second occurrence",
+			iteration:  1,
+			slug:       "make_test",
+			slugCounts: map[string]int{"make_test": 1},
+			want:       ".ralph/guardrail_001_make_test_1.log",
+		},
+		{
+			name:       "third occurrence",
+			iteration:  1,
+			slug:       "make_test",
+			slugCounts: map[string]int{"make_test": 2},
+			want:       ".ralph/guardrail_001_make_test_2.log",
+		},
+		{
+			name:       "different slug unaffected",
+			iteration:  1,
+			slug:       "npm_test",
+			slugCounts: map[string]int{"make_test": 3},
+			want:       ".ralph/guardrail_001_npm_test.log",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := r.generateLogFilename(tt.iteration, tt.slug, tt.slugCounts)
+			if got != tt.want {
+				t.Errorf("generateLogFilename() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateLogFilename_Increments(t *testing.T) {
+	r := &Runner{OutputDir: ".ralph"}
+	slugCounts := make(map[string]int)
+
+	// First call for make_test
+	got1 := r.generateLogFilename(1, "make_test", slugCounts)
+	if got1 != ".ralph/guardrail_001_make_test.log" {
+		t.Errorf("First call: got %q, want %q", got1, ".ralph/guardrail_001_make_test.log")
+	}
+
+	// Second call for make_test
+	got2 := r.generateLogFilename(1, "make_test", slugCounts)
+	if got2 != ".ralph/guardrail_001_make_test_1.log" {
+		t.Errorf("Second call: got %q, want %q", got2, ".ralph/guardrail_001_make_test_1.log")
+	}
+
+	// Third call for make_test
+	got3 := r.generateLogFilename(1, "make_test", slugCounts)
+	if got3 != ".ralph/guardrail_001_make_test_2.log" {
+		t.Errorf("Third call: got %q, want %q", got3, ".ralph/guardrail_001_make_test_2.log")
+	}
+
+	// Call for different slug
+	got4 := r.generateLogFilename(1, "npm_test", slugCounts)
+	if got4 != ".ralph/guardrail_001_npm_test.log" {
+		t.Errorf("Different slug: got %q, want %q", got4, ".ralph/guardrail_001_npm_test.log")
+	}
+}

@@ -122,6 +122,7 @@ func LoadWithLocal(basePath string) (Settings, error) {
 
 // deepMerge merges JSON data into existing settings.
 // Scalars override, arrays replace, objects merge recursively.
+// Returns an error if any field has an invalid type.
 func deepMerge(settings *Settings, data []byte) error {
 	// Parse into a map for selective merging
 	var local map[string]json.RawMessage
@@ -132,75 +133,86 @@ func deepMerge(settings *Settings, data []byte) error {
 	// Handle scalar overrides
 	if v, ok := local["maximumIterations"]; ok {
 		var val int
-		if err := json.Unmarshal(v, &val); err == nil {
-			settings.MaximumIterations = val
+		if err := json.Unmarshal(v, &val); err != nil {
+			return fmt.Errorf("maximumIterations: %w", err)
 		}
+		settings.MaximumIterations = val
 	}
 	if v, ok := local["completionResponse"]; ok {
 		var val string
-		if err := json.Unmarshal(v, &val); err == nil {
-			settings.CompletionResponse = val
+		if err := json.Unmarshal(v, &val); err != nil {
+			return fmt.Errorf("completionResponse: %w", err)
 		}
+		settings.CompletionResponse = val
 	}
 	if v, ok := local["outputTruncateChars"]; ok {
 		var val int
-		if err := json.Unmarshal(v, &val); err == nil {
-			settings.OutputTruncateChars = val
+		if err := json.Unmarshal(v, &val); err != nil {
+			return fmt.Errorf("outputTruncateChars: %w", err)
 		}
+		settings.OutputTruncateChars = val
 	}
 	if v, ok := local["streamAgentOutput"]; ok {
 		var val bool
-		if err := json.Unmarshal(v, &val); err == nil {
-			settings.StreamAgentOutput = val
+		if err := json.Unmarshal(v, &val); err != nil {
+			return fmt.Errorf("streamAgentOutput: %w", err)
 		}
+		settings.StreamAgentOutput = val
 	}
 
 	// Handle agent object (recursive merge)
 	if v, ok := local["agent"]; ok {
 		var agentLocal map[string]json.RawMessage
-		if err := json.Unmarshal(v, &agentLocal); err == nil {
-			if cmd, ok := agentLocal["command"]; ok {
-				var val string
-				if err := json.Unmarshal(cmd, &val); err == nil {
-					settings.Agent.Command = val
-				}
+		if err := json.Unmarshal(v, &agentLocal); err != nil {
+			return fmt.Errorf("agent: %w", err)
+		}
+		if cmd, ok := agentLocal["command"]; ok {
+			var val string
+			if err := json.Unmarshal(cmd, &val); err != nil {
+				return fmt.Errorf("agent.command: %w", err)
 			}
-			if flags, ok := agentLocal["flags"]; ok {
-				var val []string
-				if err := json.Unmarshal(flags, &val); err == nil {
-					settings.Agent.Flags = val // arrays replace
-				}
+			settings.Agent.Command = val
+		}
+		if flags, ok := agentLocal["flags"]; ok {
+			var val []string
+			if err := json.Unmarshal(flags, &val); err != nil {
+				return fmt.Errorf("agent.flags: %w", err)
 			}
+			settings.Agent.Flags = val // arrays replace
 		}
 	}
 
 	// Handle guardrails array (replace)
 	if v, ok := local["guardrails"]; ok {
 		var val []Guardrail
-		if err := json.Unmarshal(v, &val); err == nil {
-			settings.Guardrails = val
+		if err := json.Unmarshal(v, &val); err != nil {
+			return fmt.Errorf("guardrails: %w", err)
 		}
+		settings.Guardrails = val
 	}
 
 	// Handle SCM object (recursive merge)
 	if v, ok := local["scm"]; ok {
 		var scmLocal map[string]json.RawMessage
-		if err := json.Unmarshal(v, &scmLocal); err == nil {
-			if settings.SCM == nil {
-				settings.SCM = &SCMConfig{}
+		if err := json.Unmarshal(v, &scmLocal); err != nil {
+			return fmt.Errorf("scm: %w", err)
+		}
+		if settings.SCM == nil {
+			settings.SCM = &SCMConfig{}
+		}
+		if cmd, ok := scmLocal["command"]; ok {
+			var val string
+			if err := json.Unmarshal(cmd, &val); err != nil {
+				return fmt.Errorf("scm.command: %w", err)
 			}
-			if cmd, ok := scmLocal["command"]; ok {
-				var val string
-				if err := json.Unmarshal(cmd, &val); err == nil {
-					settings.SCM.Command = val
-				}
+			settings.SCM.Command = val
+		}
+		if tasks, ok := scmLocal["tasks"]; ok {
+			var val []string
+			if err := json.Unmarshal(tasks, &val); err != nil {
+				return fmt.Errorf("scm.tasks: %w", err)
 			}
-			if tasks, ok := scmLocal["tasks"]; ok {
-				var val []string
-				if err := json.Unmarshal(tasks, &val); err == nil {
-					settings.SCM.Tasks = val // arrays replace
-				}
-			}
+			settings.SCM.Tasks = val // arrays replace
 		}
 	}
 
@@ -230,6 +242,10 @@ func (s *Settings) Validate() error {
 		return fmt.Errorf("maximumIterations must be a positive integer, got %d", s.MaximumIterations)
 	}
 
+	if s.CompletionResponse == "" {
+		return fmt.Errorf("completionResponse must not be empty")
+	}
+
 	if s.OutputTruncateChars <= 0 {
 		return fmt.Errorf("outputTruncateChars must be a positive integer, got %d", s.OutputTruncateChars)
 	}
@@ -244,6 +260,11 @@ func (s *Settings) Validate() error {
 		if !validActions[action] {
 			return fmt.Errorf("guardrails[%d].failAction must be APPEND, PREPEND, or REPLACE, got %q", i, g.FailAction)
 		}
+	}
+
+	// Validate SCM config: command required when tasks exist
+	if s.SCM != nil && len(s.SCM.Tasks) > 0 && s.SCM.Command == "" {
+		return fmt.Errorf("scm.command must be configured when scm.tasks is non-empty")
 	}
 
 	return nil

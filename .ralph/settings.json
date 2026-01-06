@@ -8,7 +8,7 @@
   },
   "guardrails": [
     {
-      "command": "make all",
+      "command": "make fmt",
       "failAction": "APPEND"
     },
     {
