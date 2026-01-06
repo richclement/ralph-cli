@@ -24,6 +24,7 @@ type Runner struct {
 	Settings *config.Settings
 	Stdout   io.Writer // For streaming output, defaults to os.Stdout
 	Stderr   io.Writer // For streaming output, defaults to os.Stderr
+	Verbose  bool      // Enable verbose logging
 }
 
 // NewRunner creates a new agent runner.
@@ -46,6 +47,9 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 		cmdParts = append(cmdParts, shellQuote(arg))
 	}
 	cmdStr := strings.Join(cmdParts, " ")
+
+	// Always log the full command being executed
+	_, _ = fmt.Fprintf(r.Stderr, "[ralph] Agent command: %s\n", cmdStr)
 
 	// Use user's shell with -ic to support aliases and functions
 	shell := os.Getenv("SHELL")

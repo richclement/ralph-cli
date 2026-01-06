@@ -51,6 +51,7 @@ func NewRunner(opts Options) *Runner {
 	agentRunner := agent.NewRunner(opts.Settings)
 	agentRunner.Stdout = opts.Stdout
 	agentRunner.Stderr = opts.Stderr
+	agentRunner.Verbose = opts.Verbose
 
 	guardrailRunner := guardrail.NewRunner(opts.Settings.OutputTruncateChars, opts.Verbose)
 	guardrailRunner.Stdout = opts.Stdout
