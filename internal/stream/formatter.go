@@ -100,9 +100,9 @@ func (f *Formatter) FormatEvent(e *Event) {
 
 	case EventText:
 		if f.config.ShowText && e.Text != "" {
-			// Truncate long text, show first line
-			text := firstLine(e.Text, 80)
-			f.writeLine(f.prefixColor, prefix, f.textColor, fmt.Sprintf("%q", text))
+			for _, line := range strings.Split(e.Text, "\n") {
+				f.writeLine(f.prefixColor, prefix, f.textColor, line)
+			}
 		}
 
 	case EventResult:

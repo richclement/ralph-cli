@@ -16,6 +16,16 @@ type resultMessage struct {
 	Result string `json:"result"`
 }
 
+type assistantMessage struct {
+	Type    string `json:"type"`
+	Message *struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text,omitempty"`
+		} `json:"content"`
+	} `json:"message,omitempty"`
+}
+
 // ExtractResponse extracts content from the first <response> tag.
 // Returns the content and whether a tag was found.
 func ExtractResponse(output string) (string, bool) {
@@ -49,6 +59,33 @@ func ExtractFromJSON(output string) (string, bool) {
 
 		if msg.Type == "result" {
 			return msg.Result, true
+		}
+	}
+
+	// Fall back to assistant text content for <response> tags
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if !strings.Contains(line, `"type":"assistant"`) {
+			continue
+		}
+
+		var msg assistantMessage
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			continue
+		}
+		if msg.Type != "assistant" || msg.Message == nil {
+			continue
+		}
+		for _, content := range msg.Message.Content {
+			if content.Type != "text" || content.Text == "" {
+				continue
+			}
+			if resp, found := ExtractResponse(content.Text); found {
+				return resp, true
+			}
 		}
 	}
 	return "", false

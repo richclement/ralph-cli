@@ -164,9 +164,8 @@ func TestFormatter_TextMultiline(t *testing.T) {
 	})
 
 	got := buf.String()
-	// Should only show first line
-	if strings.Contains(got, "Second") {
-		t.Errorf("output should only contain first line: %q", got)
+	if !strings.Contains(got, "Second line") {
+		t.Errorf("output missing second line: %q", got)
 	}
 }
 

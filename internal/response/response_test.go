@@ -173,6 +173,12 @@ func TestExtractFromJSON(t *testing.T) {
 			found:  true,
 		},
 		{
+			name:   "assistant text response tag",
+			output: `{"type":"assistant","message":{"content":[{"type":"text","text":"done\\n<response>DONE</response>"}]}}`,
+			want:   "DONE",
+			found:  true,
+		},
+		{
 			name:   "whitespace around lines",
 			output: "  {\"type\":\"result\",\"result\":\"done\"}  \n",
 			want:   "done",
@@ -206,6 +212,14 @@ func TestIsComplete_JSON(t *testing.T) {
 
 	if IsComplete(output, "other") {
 		t.Error("IsComplete should return false for non-matching result")
+	}
+}
+
+func TestIsComplete_JSONAssistantText(t *testing.T) {
+	output := `{"type":"assistant","message":{"content":[{"type":"text","text":"<response>DONE</response>"}]}}`
+
+	if !IsComplete(output, "DONE") {
+		t.Error("IsComplete should return true for response tag in assistant JSON")
 	}
 }
 
