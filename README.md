@@ -9,19 +9,24 @@ A deterministic outer loop that repeatedly runs a CLI LLM agent until it returns
 
 ## Installation
 
-### From Source (go install)
+### Using go install
 
 ```bash
 go install github.com/richclement/ralph-cli/cmd/ralph@latest
 ```
 
-### Clone and Build
+This downloads and installs the binary to `$GOPATH/bin` (or `$HOME/go/bin` if `GOPATH` is unset).
+
+### From Source
 
 ```bash
 git clone https://github.com/richclement/ralph-cli.git
 cd ralph-cli
 make build
 # Binary at ./ralph
+
+# Optionally install to $GOPATH/bin
+make install
 ```
 
 ## Usage
