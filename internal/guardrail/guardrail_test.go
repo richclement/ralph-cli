@@ -1,7 +1,13 @@
 package guardrail
 
 import (
+	"bytes"
+	"context"
+	"os"
+	"strings"
 	"testing"
+
+	"github.com/richclement/ralph-cli/internal/config"
 )
 
 func TestGenerateSlug(t *testing.T) {
@@ -220,5 +226,293 @@ func TestGenerateLogFilename_Increments(t *testing.T) {
 	got4 := r.generateLogFilename(1, "npm_test", slugCounts)
 	if got4 != ".ralph/guardrail_001_npm_test.log" {
 		t.Errorf("Different slug: got %q, want %q", got4, ".ralph/guardrail_001_npm_test.log")
+	}
+}
+
+func TestNewRunner(t *testing.T) {
+	runner := NewRunner(1000, true)
+
+	if runner.OutputDir != ".ralph" {
+		t.Errorf("Expected OutputDir to be '.ralph', got %q", runner.OutputDir)
+	}
+	if runner.OutputTruncateChars != 1000 {
+		t.Errorf("Expected OutputTruncateChars to be 1000, got %d", runner.OutputTruncateChars)
+	}
+	if runner.Verbose != true {
+		t.Error("Expected Verbose to be true")
+	}
+	if runner.Stdout != os.Stdout {
+		t.Error("Expected Stdout to default to os.Stdout")
+	}
+	if runner.Stderr != os.Stderr {
+		t.Error("Expected Stderr to default to os.Stderr")
+	}
+}
+
+func TestNewRunner_VerboseFalse(t *testing.T) {
+	runner := NewRunner(500, false)
+
+	if runner.Verbose != false {
+		t.Error("Expected Verbose to be false")
+	}
+	if runner.OutputTruncateChars != 500 {
+		t.Errorf("Expected OutputTruncateChars to be 500, got %d", runner.OutputTruncateChars)
+	}
+}
+
+func TestAllPassed_AllSuccess(t *testing.T) {
+	results := []Result{
+		{Success: true},
+		{Success: true},
+		{Success: true},
+	}
+
+	if !AllPassed(results) {
+		t.Error("Expected AllPassed to return true when all results are successful")
+	}
+}
+
+func TestAllPassed_OneFailed(t *testing.T) {
+	results := []Result{
+		{Success: true},
+		{Success: false},
+		{Success: true},
+	}
+
+	if AllPassed(results) {
+		t.Error("Expected AllPassed to return false when one result failed")
+	}
+}
+
+func TestAllPassed_AllFailed(t *testing.T) {
+	results := []Result{
+		{Success: false},
+		{Success: false},
+	}
+
+	if AllPassed(results) {
+		t.Error("Expected AllPassed to return false when all results failed")
+	}
+}
+
+func TestAllPassed_EmptyResults(t *testing.T) {
+	results := []Result{}
+
+	if !AllPassed(results) {
+		t.Error("Expected AllPassed to return true for empty results")
+	}
+}
+
+func TestGetFailedResults(t *testing.T) {
+	results := []Result{
+		{Guardrail: config.Guardrail{Command: "cmd1"}, Success: true},
+		{Guardrail: config.Guardrail{Command: "cmd2"}, Success: false},
+		{Guardrail: config.Guardrail{Command: "cmd3"}, Success: true},
+		{Guardrail: config.Guardrail{Command: "cmd4"}, Success: false},
+	}
+
+	failed := GetFailedResults(results)
+
+	if len(failed) != 2 {
+		t.Errorf("Expected 2 failed results, got %d", len(failed))
+	}
+	if failed[0].Guardrail.Command != "cmd2" {
+		t.Errorf("Expected first failed to be cmd2, got %s", failed[0].Guardrail.Command)
+	}
+	if failed[1].Guardrail.Command != "cmd4" {
+		t.Errorf("Expected second failed to be cmd4, got %s", failed[1].Guardrail.Command)
+	}
+}
+
+func TestGetFailedResults_NoFailures(t *testing.T) {
+	results := []Result{
+		{Success: true},
+		{Success: true},
+	}
+
+	failed := GetFailedResults(results)
+
+	if len(failed) != 0 {
+		t.Errorf("Expected 0 failed results, got %d", len(failed))
+	}
+}
+
+func TestFormatFailureMessage(t *testing.T) {
+	result := Result{
+		Guardrail: config.Guardrail{Command: "make test"},
+		Output:    "test output here",
+		ExitCode:  1,
+		LogFile:   ".ralph/guardrail_001_make_test.log",
+	}
+
+	msg := FormatFailureMessage(result, 1000)
+
+	if !strings.Contains(msg, "make test") {
+		t.Error("Expected message to contain command")
+	}
+	if !strings.Contains(msg, "exit code 1") {
+		t.Error("Expected message to contain exit code")
+	}
+	if !strings.Contains(msg, ".ralph/guardrail_001_make_test.log") {
+		t.Error("Expected message to contain log file path")
+	}
+	if !strings.Contains(msg, "test output here") {
+		t.Error("Expected message to contain output")
+	}
+}
+
+func TestFormatFailureMessage_WithTruncation(t *testing.T) {
+	result := Result{
+		Guardrail: config.Guardrail{Command: "make test"},
+		Output:    "this is a very long output that should be truncated",
+		ExitCode:  2,
+		LogFile:   ".ralph/guardrail_001_make_test.log",
+	}
+
+	msg := FormatFailureMessage(result, 10)
+
+	if !strings.Contains(msg, "... [truncated]") {
+		t.Error("Expected message to contain truncation indicator")
+	}
+}
+
+func TestGetFailedOutputForPrompt(t *testing.T) {
+	results := []Result{
+		{
+			Guardrail: config.Guardrail{Command: "cmd1"},
+			Output:    "error 1",
+			Success:   false,
+		},
+		{
+			Guardrail: config.Guardrail{Command: "cmd2"},
+			Output:    "error 2",
+			Success:   false,
+		},
+		{
+			Guardrail: config.Guardrail{Command: "cmd3"},
+			Output:    "ok",
+			Success:   true,
+		},
+	}
+
+	output := GetFailedOutputForPrompt(results, 1000)
+
+	if !strings.Contains(output, "cmd1") {
+		t.Error("Expected output to contain cmd1")
+	}
+	if !strings.Contains(output, "error 1") {
+		t.Error("Expected output to contain error 1")
+	}
+	if !strings.Contains(output, "cmd2") {
+		t.Error("Expected output to contain cmd2")
+	}
+	if !strings.Contains(output, "error 2") {
+		t.Error("Expected output to contain error 2")
+	}
+	// Should not include successful command
+	if strings.Contains(output, "cmd3") {
+		t.Error("Expected output to NOT contain cmd3 (successful)")
+	}
+}
+
+func TestRunner_Run_Success(t *testing.T) {
+	// Create temp directory for logs
+	tmpDir := t.TempDir()
+
+	var stderr bytes.Buffer
+	runner := &Runner{
+		OutputDir:           tmpDir,
+		OutputTruncateChars: 1000,
+		Stdout:              &bytes.Buffer{},
+		Stderr:              &stderr,
+		Verbose:             false,
+	}
+
+	g := config.Guardrail{
+		Command:    "echo success",
+		FailAction: "APPEND",
+	}
+
+	result := runner.Run(context.Background(), g, 1)
+
+	if !result.Success {
+		t.Error("Expected success for 'echo success'")
+	}
+	if result.ExitCode != 0 {
+		t.Errorf("Expected exit code 0, got %d", result.ExitCode)
+	}
+	if !strings.Contains(result.Output, "success") {
+		t.Errorf("Expected output to contain 'success', got %q", result.Output)
+	}
+}
+
+func TestRunner_Run_Failure(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	var stderr bytes.Buffer
+	runner := &Runner{
+		OutputDir:           tmpDir,
+		OutputTruncateChars: 1000,
+		Stdout:              &bytes.Buffer{},
+		Stderr:              &stderr,
+		Verbose:             false,
+	}
+
+	g := config.Guardrail{
+		Command:    "exit 1",
+		FailAction: "APPEND",
+	}
+
+	result := runner.Run(context.Background(), g, 1)
+
+	if result.Success {
+		t.Error("Expected failure for 'exit 1'")
+	}
+	if result.ExitCode != 1 {
+		t.Errorf("Expected exit code 1, got %d", result.ExitCode)
+	}
+}
+
+func TestRunner_RunAll(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	var stderr bytes.Buffer
+	runner := &Runner{
+		OutputDir:           tmpDir,
+		OutputTruncateChars: 1000,
+		Stdout:              &bytes.Buffer{},
+		Stderr:              &stderr,
+		Verbose:             false,
+	}
+
+	guardrails := []config.Guardrail{
+		{Command: "echo test1", FailAction: "APPEND"},
+		{Command: "echo test2", FailAction: "APPEND"},
+	}
+
+	results := runner.RunAll(context.Background(), guardrails, 1)
+
+	if len(results) != 2 {
+		t.Errorf("Expected 2 results, got %d", len(results))
+	}
+	if !results[0].Success || !results[1].Success {
+		t.Error("Expected both guardrails to succeed")
+	}
+}
+
+func TestRunner_Print(t *testing.T) {
+	var stderr bytes.Buffer
+	runner := &Runner{
+		OutputDir:           ".ralph",
+		OutputTruncateChars: 1000,
+		Stdout:              &bytes.Buffer{},
+		Stderr:              &stderr,
+		Verbose:             false,
+	}
+
+	runner.print("test message %d", 42)
+
+	if !strings.Contains(stderr.String(), "test message 42") {
+		t.Errorf("Expected stderr to contain 'test message 42', got %q", stderr.String())
 	}
 }

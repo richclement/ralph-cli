@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"bytes"
+	"context"
+	"os"
 	"testing"
 
 	"github.com/richclement/ralph-cli/internal/config"
@@ -164,5 +167,115 @@ func TestBuildArgs_FullPath(t *testing.T) {
 	// Should extract basename and detect claude
 	if len(args) < 1 || args[0] != "-p" {
 		t.Errorf("Expected -p flag for /usr/local/bin/claude, got %v", args)
+	}
+}
+
+func TestNewRunner(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "claude",
+			Flags:   []string{"--model", "opus"},
+		},
+		StreamAgentOutput: true,
+	}
+
+	runner := NewRunner(settings)
+
+	if runner.Settings != settings {
+		t.Error("Expected settings to be assigned")
+	}
+	if runner.Stdout != os.Stdout {
+		t.Error("Expected Stdout to default to os.Stdout")
+	}
+	if runner.Stderr != os.Stderr {
+		t.Error("Expected Stderr to default to os.Stderr")
+	}
+	if runner.Verbose != false {
+		t.Error("Expected Verbose to default to false")
+	}
+}
+
+func TestRunShell_Success(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	output, err := RunShell(context.Background(), "echo hello", false, &stdout, &stderr)
+
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if output != "hello\n" {
+		t.Errorf("Expected 'hello\\n', got %q", output)
+	}
+}
+
+func TestRunShell_WithStream(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	output, err := RunShell(context.Background(), "echo hello", true, &stdout, &stderr)
+
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if output != "hello\n" {
+		t.Errorf("Expected 'hello\\n', got %q", output)
+	}
+	// When streaming, output should also go to stdout
+	if stdout.String() != "hello\n" {
+		t.Errorf("Expected stdout to contain 'hello\\n', got %q", stdout.String())
+	}
+}
+
+func TestRunShell_CommandFailure(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	_, err := RunShell(context.Background(), "exit 1", false, &stdout, &stderr)
+
+	if err == nil {
+		t.Error("Expected error for failed command")
+	}
+}
+
+func TestRunShell_CancelledContext(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := RunShell(ctx, "sleep 10", false, &stdout, &stderr)
+
+	if err == nil {
+		t.Error("Expected error for cancelled context")
+	}
+}
+
+func TestBuildArgs_Codex(t *testing.T) {
+	// Create .ralph directory for prompt file
+	if err := os.MkdirAll(RalphDir, 0755); err != nil {
+		t.Fatalf("Failed to create .ralph directory: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(RalphDir) }()
+
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "codex",
+		},
+	}
+	r := NewRunner(settings)
+
+	args, promptFile := r.buildArgs("test prompt", 1)
+
+	// Should have "e" subcommand for codex
+	if len(args) < 1 || args[0] != "e" {
+		t.Errorf("Expected first arg to be 'e', got %v", args)
+	}
+
+	// Should have prompt file
+	if promptFile == "" {
+		t.Error("Expected prompt file for codex")
+	}
+
+	// Prompt file should be in args
+	if len(args) < 2 || args[1] != promptFile {
+		t.Errorf("Expected prompt file as second arg, got %v", args)
 	}
 }
