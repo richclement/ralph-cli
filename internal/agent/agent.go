@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/creack/pty"
 	"github.com/richclement/ralph-cli/internal/config"
 )
 
@@ -40,6 +41,11 @@ func NewRunner(settings *config.Settings) *Runner {
 // The iteration parameter is used for naming prompt files (for Codex).
 func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string, error) {
 	args, promptFile := r.buildArgs(prompt, iteration)
+	if promptFile != "" {
+		defer func() {
+			_ = os.Remove(promptFile)
+		}()
+	}
 
 	// Build the full command string for shell execution with proper quoting
 	cmdParts := []string{shellQuote(r.Settings.Agent.Command)}
@@ -61,6 +67,34 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 
 	var outputBuf bytes.Buffer
 
+	if r.Settings.StreamAgentOutput && runtime.GOOS != "windows" {
+		ptmx, err := pty.Start(cmd)
+		if err == nil {
+			defer func() {
+				_ = ptmx.Close()
+			}()
+
+			mw := io.MultiWriter(&outputBuf, r.Stdout)
+			copyDone := make(chan struct{})
+			var copyErr error
+			go func() {
+				_, copyErr = io.Copy(mw, ptmx)
+				close(copyDone)
+			}()
+
+			err = cmd.Wait()
+			<-copyDone
+			if err == nil && copyErr != nil {
+				err = copyErr
+			}
+			return outputBuf.String(), err
+		}
+		if r.Verbose {
+			_, _ = fmt.Fprintf(r.Stderr, "[ralph] PTY start failed, falling back to pipe streaming: %v\n", err)
+		}
+		cmd = exec.CommandContext(ctx, shell, "-ic", cmdStr)
+	}
+
 	if r.Settings.StreamAgentOutput {
 		// Tee output to both buffer and console
 		cmd.Stdout = io.MultiWriter(&outputBuf, r.Stdout)
@@ -75,11 +109,6 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 	cmd.Stdin = nil
 
 	err := cmd.Run()
-
-	// Clean up prompt file if it was created
-	if promptFile != "" {
-		_ = os.Remove(promptFile)
-	}
 
 	return outputBuf.String(), err
 }
