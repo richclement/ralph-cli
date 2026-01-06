@@ -244,3 +244,31 @@ func TestIsComplete_JSONPriority(t *testing.T) {
 		t.Error("IsComplete should prefer JSON over <response> tag")
 	}
 }
+
+func TestIsComplete_ResponseTagInResult(t *testing.T) {
+	// JSON result contains <response> tag (real-world case: Claude outputs tag in its response)
+	output := `{"type":"result","result":"## Code Review\n\nLooks good!\n\n<response>DONE</response>"}`
+
+	if !IsComplete(output, "DONE") {
+		t.Error("IsComplete should extract <response> tag content from JSON result field")
+	}
+
+	// Should also work when completionResponse is the full tag - we extract content from it too
+	if !IsComplete(output, "<response>DONE</response>") {
+		t.Error("IsComplete should match when completionResponse includes the tags (extracts DONE from both)")
+	}
+}
+
+func TestIsComplete_ResponseTagInLongResult(t *testing.T) {
+	// Simulates the actual bug: long markdown response with <response> tag at end
+	longResult := "## Summary\n\nThis is a very long code review with lots of content...\n\n"
+	longResult += "### Issues Found\n\n1. Issue one\n2. Issue two\n\n"
+	longResult += "### Recommendation\n\nApprove with minor changes.\n\n"
+	longResult += "<response>DONE</response>"
+
+	output := `{"type":"result","result":"` + longResult + `"}`
+
+	if !IsComplete(output, "DONE") {
+		t.Error("IsComplete should detect <response>DONE</response> in long JSON result")
+	}
+}

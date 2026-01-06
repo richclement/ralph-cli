@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 
 	"github.com/richclement/ralph-cli/internal/agent"
@@ -46,6 +47,11 @@ func NewRunner(opts Options) *Runner {
 	}
 	if opts.Stderr == nil {
 		opts.Stderr = os.Stderr
+	}
+
+	// Enable response debug logging in verbose mode
+	if opts.Verbose {
+		response.DebugLog = log.New(opts.Stderr, "[response-debug] ", 0)
 	}
 
 	agentRunner := agent.NewRunner(opts.Settings)
@@ -142,6 +148,7 @@ func (r *Runner) Run(ctx context.Context) int {
 		}
 
 		// Check for completion
+		r.log("Checking completion: output_len=%d, completion_response=%q", len(output), r.opts.Settings.CompletionResponse)
 		if response.IsComplete(output, r.opts.Settings.CompletionResponse) {
 			r.print("Completion response matched")
 			return ExitSuccess
