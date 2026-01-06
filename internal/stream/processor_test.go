@@ -12,7 +12,7 @@ func TestProcessor_Integration(t *testing.T) {
 	config := FormatterConfig{AgentName: "claude", UseColor: false, ShowText: true}
 	formatter := NewFormatter(&buf, config)
 
-	proc := NewProcessor("claude", formatter, nil)
+	proc := NewProcessor("claude", formatter, nil, nil)
 	if proc == nil {
 		t.Fatal("NewProcessor returned nil")
 	}
@@ -66,7 +66,7 @@ func TestProcessor_MalformedJSON(t *testing.T) {
 	config := FormatterConfig{AgentName: "claude", UseColor: false}
 	formatter := NewFormatter(&buf, config)
 
-	proc := NewProcessor("claude", formatter, nil)
+	proc := NewProcessor("claude", formatter, nil, nil)
 
 	// Write mix of valid and invalid JSON
 	_, _ = proc.Write([]byte(`{"type":"assistant","message":{"content":[{"type":"text","text":"Valid"}]}}` + "\n"))
@@ -92,7 +92,7 @@ func TestProcessor_LastActivity(t *testing.T) {
 	config := FormatterConfig{AgentName: "claude", UseColor: false}
 	formatter := NewFormatter(&buf, config)
 
-	proc := NewProcessor("claude", formatter, nil)
+	proc := NewProcessor("claude", formatter, nil, nil)
 
 	before := time.Now()
 	time.Sleep(10 * time.Millisecond)
@@ -113,7 +113,7 @@ func TestProcessor_UnknownAgent(t *testing.T) {
 	config := FormatterConfig{AgentName: "unknown", UseColor: false}
 	formatter := NewFormatter(&buf, config)
 
-	proc := NewProcessor("unknown-agent", formatter, nil)
+	proc := NewProcessor("unknown-agent", formatter, nil, nil)
 	if proc != nil {
 		t.Error("expected nil processor for unknown agent")
 	}
@@ -124,7 +124,7 @@ func TestProcessor_MultipleWrites(t *testing.T) {
 	config := FormatterConfig{AgentName: "claude", UseColor: false}
 	formatter := NewFormatter(&buf, config)
 
-	proc := NewProcessor("claude", formatter, nil)
+	proc := NewProcessor("claude", formatter, nil, nil)
 
 	// Write a message in chunks (simulating streaming)
 	msg := `{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}`
@@ -153,7 +153,7 @@ func TestProcessor_EmptyWrite(t *testing.T) {
 	config := FormatterConfig{AgentName: "claude", UseColor: false}
 	formatter := NewFormatter(&buf, config)
 
-	proc := NewProcessor("claude", formatter, nil)
+	proc := NewProcessor("claude", formatter, nil, nil)
 
 	// Write empty data
 	n, err := proc.Write([]byte{})
@@ -172,7 +172,7 @@ func TestProcessor_DoubleClose(t *testing.T) {
 	config := FormatterConfig{AgentName: "claude", UseColor: false}
 	formatter := NewFormatter(&buf, config)
 
-	proc := NewProcessor("claude", formatter, nil)
+	proc := NewProcessor("claude", formatter, nil, nil)
 
 	_, _ = proc.Write([]byte(`{"type":"result","result":"done","total_cost_usd":0.01}` + "\n"))
 
@@ -186,7 +186,7 @@ func TestProcessor_ToolStartEnd(t *testing.T) {
 	config := FormatterConfig{AgentName: "claude", UseColor: false, Verbose: true}
 	formatter := NewFormatter(&buf, config)
 
-	proc := NewProcessor("claude", formatter, nil)
+	proc := NewProcessor("claude", formatter, nil, nil)
 
 	// Tool use followed by result
 	_, _ = proc.Write([]byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}` + "\n"))
@@ -209,7 +209,7 @@ func TestProcessor_ToolError(t *testing.T) {
 	config := FormatterConfig{AgentName: "claude", UseColor: false}
 	formatter := NewFormatter(&buf, config)
 
-	proc := NewProcessor("claude", formatter, nil)
+	proc := NewProcessor("claude", formatter, nil, nil)
 
 	// Tool use with error result
 	_, _ = proc.Write([]byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Edit","input":{"file_path":"/etc/passwd"}}]}}` + "\n"))
@@ -224,5 +224,27 @@ func TestProcessor_ToolError(t *testing.T) {
 	}
 	if !strings.Contains(output, "Permission denied") {
 		t.Errorf("output missing error message: %q", output)
+	}
+}
+
+func TestProcessor_RawLog(t *testing.T) {
+	var buf bytes.Buffer
+	var rawLog bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false}
+	formatter := NewFormatter(&buf, config)
+
+	proc := NewProcessor("claude", formatter, nil, &rawLog)
+
+	_, _ = proc.Write([]byte(`{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}` + "\n"))
+	_, _ = proc.Write([]byte(`{"type":"result","result":"done","total_cost_usd":0.01}` + "\n"))
+
+	_ = proc.Close()
+
+	logOutput := rawLog.String()
+	if !strings.Contains(logOutput, `"type":"assistant"`) {
+		t.Errorf("raw log missing assistant line: %q", logOutput)
+	}
+	if !strings.Contains(logOutput, `"type":"result"`) {
+		t.Errorf("raw log missing result line: %q", logOutput)
 	}
 }

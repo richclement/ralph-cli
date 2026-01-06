@@ -71,7 +71,29 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 
 	// Create stream processor if agent supports structured output
 	var proc *stream.Processor
+	var rawLogFile *os.File
 	if r.Settings.StreamAgentOutput {
+		agentName := strings.ToLower(strings.TrimSuffix(filepath.Base(r.Settings.Agent.Command), ".exe"))
+		var rawLog io.Writer
+		if agentName == "claude" {
+			if err := os.MkdirAll(RalphDir, 0755); err != nil {
+				if r.Verbose {
+					_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to create %s: %v\n", RalphDir, err)
+				}
+			} else {
+				logPath := filepath.Join(RalphDir, "stream-json.log")
+				file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+				if err != nil {
+					if r.Verbose {
+						_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to open stream log %s: %v\n", logPath, err)
+					}
+				} else {
+					rawLogFile = file
+					rawLog = file
+				}
+			}
+		}
+
 		config := stream.DefaultFormatterConfig(filepath.Base(r.Settings.Agent.Command))
 		formatter := stream.NewFormatter(r.Stdout, config)
 
@@ -80,9 +102,12 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 			debugLog = log.New(r.Stderr, "[stream-debug] ", log.LstdFlags)
 		}
 
-		proc = stream.NewProcessor(r.Settings.Agent.Command, formatter, debugLog)
+		proc = stream.NewProcessor(r.Settings.Agent.Command, formatter, debugLog, rawLog)
 	}
 	if proc != nil {
+		if rawLogFile != nil {
+			defer func() { _ = rawLogFile.Close() }()
+		}
 		defer func() { _ = proc.Close() }()
 	}
 

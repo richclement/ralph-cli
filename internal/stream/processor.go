@@ -19,6 +19,7 @@ type Processor struct {
 	pipeWriter *io.PipeWriter
 	done       chan struct{}
 	closeOnce  sync.Once
+	rawLog     io.Writer
 
 	// Observability
 	lastActivity atomic.Value // time.Time
@@ -29,7 +30,7 @@ type Processor struct {
 
 // NewProcessor creates a processor for the given agent command
 // Returns nil if agent doesn't support structured output parsing
-func NewProcessor(agentCommand string, formatter *Formatter, debugLog *log.Logger) *Processor {
+func NewProcessor(agentCommand string, formatter *Formatter, debugLog *log.Logger, rawLog io.Writer) *Processor {
 	// Only create a processor if the agent has structured output flags.
 	// Otherwise, fall back to raw streaming output.
 	if flags := OutputFlags(agentCommand); len(flags) == 0 {
@@ -49,6 +50,7 @@ func NewProcessor(agentCommand string, formatter *Formatter, debugLog *log.Logge
 		pipeWriter: pw,
 		done:       make(chan struct{}),
 		debugLog:   debugLog,
+		rawLog:     rawLog,
 	}
 	p.lastActivity.Store(time.Now())
 	go p.decodeLoop()
@@ -66,6 +68,14 @@ func (p *Processor) decodeLoop() {
 		if len(line) > 0 {
 			trimmed := bytes.TrimSpace(line)
 			if len(trimmed) > 0 {
+				if p.rawLog != nil {
+					if _, logErr := p.rawLog.Write(append(trimmed, '\n')); logErr != nil {
+						p.errorCount.Add(1)
+						if p.debugLog != nil {
+							p.debugLog.Printf("raw log write error: %v", logErr)
+						}
+					}
+				}
 				p.lastActivity.Store(time.Now())
 
 				// Validate JSON before parsing
