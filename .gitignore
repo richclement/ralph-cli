@@ -5,6 +5,7 @@ dist/
 
 # Runtime
 .ralph/*.log
+*.log
 
 # IDE
 .idea/
