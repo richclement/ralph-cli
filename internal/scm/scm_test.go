@@ -180,3 +180,184 @@ func TestRunner_Run_EmptyTasks(t *testing.T) {
 		t.Errorf("Expected nil error when tasks are empty, got %v", err)
 	}
 }
+
+func TestRunner_RunTask_GenericTask(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+		},
+		SCM: &config.SCMConfig{
+			Command: "echo",
+			Tasks:   []string{"status"},
+		},
+	}
+
+	runner := NewRunner(settings, false)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+	runner.AgentRunner.Stdout = &stdout
+	runner.AgentRunner.Stderr = &stderr
+
+	// Run a generic task (not commit or push)
+	err := runner.runTask(context.Background(), "status", 1)
+	if err != nil {
+		t.Errorf("Expected no error for generic task, got %v", err)
+	}
+}
+
+func TestRunner_RunPush(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+		},
+		SCM: &config.SCMConfig{
+			Command: "echo",
+			Tasks:   []string{"push"},
+		},
+	}
+
+	runner := NewRunner(settings, false)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+
+	err := runner.runPush(context.Background())
+	if err != nil {
+		t.Errorf("Expected no error for runPush, got %v", err)
+	}
+}
+
+func TestRunner_Run_WithTasks(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+		},
+		SCM: &config.SCMConfig{
+			Command: "echo",
+			Tasks:   []string{"status"}, // Just status, not commit (which requires agent interaction)
+		},
+	}
+
+	runner := NewRunner(settings, true) // verbose mode
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+	runner.AgentRunner.Stdout = &stdout
+	runner.AgentRunner.Stderr = &stderr
+
+	err := runner.Run(context.Background(), 1)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	// Verbose output should contain task info
+	if !bytes.Contains(stderr.Bytes(), []byte("[ralph]")) {
+		t.Error("Expected verbose output")
+	}
+}
+
+func TestRunner_RunCommit_NoValidMessage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			// Use a command that outputs only whitespace
+			Command: "echo",
+		},
+		SCM: &config.SCMConfig{
+			Command: "git",
+			Tasks:   []string{"commit"},
+		},
+	}
+
+	runner := NewRunner(settings, false)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+	runner.AgentRunner.Stdout = &stdout
+	runner.AgentRunner.Stderr = &stderr
+
+	// Echo with empty prompt will output just a newline
+	// The extractCommitMessage on this should return something, not empty
+	// since echo adds a newline which becomes whitespace
+	// Let's use a shell command that actually outputs nothing
+	settings.Agent.Command = "true" // outputs nothing
+
+	err := runner.runCommit(context.Background(), 1)
+	// Should fail because true outputs nothing, so no valid commit message
+	if err == nil {
+		t.Error("Expected error for empty commit message")
+	}
+}
+
+func TestRunner_RunTask_CancelledContext(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "sleep",
+		},
+		SCM: &config.SCMConfig{
+			Command: "sleep",
+			Tasks:   []string{"10"},
+		},
+	}
+
+	runner := NewRunner(settings, false)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	err := runner.runTask(ctx, "status", 1)
+	if err == nil {
+		t.Error("Expected error for cancelled context")
+	}
+}
+
+func TestRunner_Run_MultipleTasks(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+		},
+		SCM: &config.SCMConfig{
+			Command: "echo",
+			Tasks:   []string{"status", "diff"}, // Multiple generic tasks
+		},
+	}
+
+	runner := NewRunner(settings, true)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+	runner.AgentRunner.Stdout = &stdout
+	runner.AgentRunner.Stderr = &stderr
+
+	err := runner.Run(context.Background(), 1)
+	if err != nil {
+		t.Errorf("Expected no error for multiple tasks, got %v", err)
+	}
+}
+
+func TestRunner_Run_TaskFails(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+		},
+		SCM: &config.SCMConfig{
+			Command: "false", // Always fails
+			Tasks:   []string{"something"},
+		},
+	}
+
+	runner := NewRunner(settings, false)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+	runner.AgentRunner.Stdout = &stdout
+	runner.AgentRunner.Stderr = &stderr
+
+	err := runner.Run(context.Background(), 1)
+	if err == nil {
+		t.Error("Expected error when task fails")
+	}
+}

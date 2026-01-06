@@ -516,3 +516,139 @@ func TestRunner_Print(t *testing.T) {
 		t.Errorf("Expected stderr to contain 'test message 42', got %q", stderr.String())
 	}
 }
+
+func TestRunner_RunWithSlugTracker_ExitCodeExtraction(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	var stderr bytes.Buffer
+	runner := &Runner{
+		OutputDir:           tmpDir,
+		OutputTruncateChars: 1000,
+		Stdout:              &bytes.Buffer{},
+		Stderr:              &stderr,
+		Verbose:             false,
+	}
+
+	// Test with specific exit code
+	g := config.Guardrail{
+		Command:    "exit 42",
+		FailAction: "APPEND",
+	}
+
+	slugCounts := make(map[string]int)
+	result := runner.RunWithSlugTracker(context.Background(), g, 1, slugCounts)
+
+	if result.Success {
+		t.Error("Expected failure for 'exit 42'")
+	}
+	if result.ExitCode != 42 {
+		t.Errorf("Expected exit code 42, got %d", result.ExitCode)
+	}
+}
+
+func TestRunner_RunAll_DuplicateSlugs(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	var stderr bytes.Buffer
+	runner := &Runner{
+		OutputDir:           tmpDir,
+		OutputTruncateChars: 1000,
+		Stdout:              &bytes.Buffer{},
+		Stderr:              &stderr,
+		Verbose:             false,
+	}
+
+	// Two guardrails with the same slug
+	guardrails := []config.Guardrail{
+		{Command: "echo test", FailAction: "APPEND"},
+		{Command: "echo test", FailAction: "APPEND"}, // Same command, same slug
+	}
+
+	results := runner.RunAll(context.Background(), guardrails, 1)
+
+	if len(results) != 2 {
+		t.Errorf("Expected 2 results, got %d", len(results))
+	}
+
+	// Log files should be different
+	if results[0].LogFile == results[1].LogFile {
+		t.Errorf("Expected different log files, but both are %q", results[0].LogFile)
+	}
+}
+
+func TestGetFailedOutputForPrompt_NoFailures(t *testing.T) {
+	results := []Result{
+		{Success: true},
+		{Success: true},
+	}
+
+	output := GetFailedOutputForPrompt(results, 1000)
+
+	if output != "" {
+		t.Errorf("Expected empty output for all passing, got %q", output)
+	}
+}
+
+func TestGetFailedOutputForPrompt_WithTruncation(t *testing.T) {
+	longOutput := "this is a very long error message that should get truncated"
+	results := []Result{
+		{
+			Guardrail: config.Guardrail{Command: "cmd"},
+			Output:    longOutput,
+			Success:   false,
+		},
+	}
+
+	output := GetFailedOutputForPrompt(results, 10)
+
+	if !strings.Contains(output, "[truncated]") {
+		t.Error("Expected output to be truncated")
+	}
+}
+
+func TestGenerateSlug_LeadingTrailingUnderscores(t *testing.T) {
+	// Test that leading/trailing special chars result in trimmed underscore
+	tests := []struct {
+		command string
+		want    string
+	}{
+		{"./script.sh", "script_sh"},
+		{"___test___", "test"},
+		{"@#$test@#$", "test"},
+	}
+
+	for _, tt := range tests {
+		got := GenerateSlug(tt.command)
+		if got != tt.want {
+			t.Errorf("GenerateSlug(%q) = %q, want %q", tt.command, got, tt.want)
+		}
+	}
+}
+
+func TestRunner_Run_WithVerbose(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	var stderr bytes.Buffer
+	runner := &Runner{
+		OutputDir:           tmpDir,
+		OutputTruncateChars: 1000,
+		Stdout:              &bytes.Buffer{},
+		Stderr:              &stderr,
+		Verbose:             true,
+	}
+
+	g := config.Guardrail{
+		Command:    "echo verbose",
+		FailAction: "APPEND",
+	}
+
+	result := runner.Run(context.Background(), g, 1)
+
+	if !result.Success {
+		t.Error("Expected success")
+	}
+	// Verbose mode should print start/end messages
+	if !strings.Contains(stderr.String(), "Guardrail start") {
+		t.Error("Expected 'Guardrail start' in verbose output")
+	}
+}

@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"testing"
 
@@ -277,5 +278,349 @@ func TestBuildArgs_Codex(t *testing.T) {
 	// Prompt file should be in args
 	if len(args) < 2 || args[1] != promptFile {
 		t.Errorf("Expected prompt file as second arg, got %v", args)
+	}
+}
+
+func TestWriteAndFlush_BasicWrite(t *testing.T) {
+	var buf bytes.Buffer
+	data := []byte("test data")
+
+	err := writeAndFlush([]io.Writer{&buf}, data)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if buf.String() != "test data" {
+		t.Errorf("Expected 'test data', got %q", buf.String())
+	}
+}
+
+func TestWriteAndFlush_MultipleWriters(t *testing.T) {
+	var buf1, buf2 bytes.Buffer
+	data := []byte("multi writer test")
+
+	err := writeAndFlush([]io.Writer{&buf1, &buf2}, data)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if buf1.String() != "multi writer test" {
+		t.Errorf("Expected 'multi writer test' in buf1, got %q", buf1.String())
+	}
+	if buf2.String() != "multi writer test" {
+		t.Errorf("Expected 'multi writer test' in buf2, got %q", buf2.String())
+	}
+}
+
+// mockFlushWriter is a writer that implements flushWriter
+type mockFlushWriter struct {
+	buf     bytes.Buffer
+	flushed bool
+}
+
+func (m *mockFlushWriter) Write(p []byte) (n int, err error) {
+	return m.buf.Write(p)
+}
+
+func (m *mockFlushWriter) Flush() error {
+	m.flushed = true
+	return nil
+}
+
+func TestWriteAndFlush_WithFlushWriter(t *testing.T) {
+	fw := &mockFlushWriter{}
+	data := []byte("flush test")
+
+	err := writeAndFlush([]io.Writer{fw}, data)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if fw.buf.String() != "flush test" {
+		t.Errorf("Expected 'flush test', got %q", fw.buf.String())
+	}
+	if !fw.flushed {
+		t.Error("Expected Flush to be called")
+	}
+}
+
+// mockFlushWriterNoErr is a writer that implements flushWriterNoErr
+type mockFlushWriterNoErr struct {
+	buf     bytes.Buffer
+	flushed bool
+}
+
+func (m *mockFlushWriterNoErr) Write(p []byte) (n int, err error) {
+	return m.buf.Write(p)
+}
+
+func (m *mockFlushWriterNoErr) Flush() {
+	m.flushed = true
+}
+
+func TestWriteAndFlush_WithFlushWriterNoErr(t *testing.T) {
+	fw := &mockFlushWriterNoErr{}
+	data := []byte("flush no err test")
+
+	err := writeAndFlush([]io.Writer{fw}, data)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if fw.buf.String() != "flush no err test" {
+		t.Errorf("Expected 'flush no err test', got %q", fw.buf.String())
+	}
+	if !fw.flushed {
+		t.Error("Expected Flush to be called")
+	}
+}
+
+// errorWriter always returns an error
+type errorWriter struct{}
+
+func (e *errorWriter) Write(p []byte) (n int, err error) {
+	return 0, io.ErrClosedPipe
+}
+
+func TestWriteAndFlush_WriteError(t *testing.T) {
+	ew := &errorWriter{}
+	data := []byte("error test")
+
+	err := writeAndFlush([]io.Writer{ew}, data)
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+	if err != io.ErrClosedPipe {
+		t.Errorf("Expected ErrClosedPipe, got %v", err)
+	}
+}
+
+// shortWriter writes less than requested
+type shortWriter struct{}
+
+func (s *shortWriter) Write(p []byte) (n int, err error) {
+	if len(p) > 0 {
+		return len(p) - 1, nil // Write one less than requested
+	}
+	return 0, nil
+}
+
+func TestWriteAndFlush_ShortWrite(t *testing.T) {
+	sw := &shortWriter{}
+	data := []byte("short write test")
+
+	err := writeAndFlush([]io.Writer{sw}, data)
+	if err == nil {
+		t.Error("Expected error for short write")
+	}
+	if err != io.ErrShortWrite {
+		t.Errorf("Expected ErrShortWrite, got %v", err)
+	}
+}
+
+func TestStreamPTY_BasicRead(t *testing.T) {
+	// Create a pipe to simulate PTY
+	r, w := io.Pipe()
+
+	var buf bytes.Buffer
+	done := make(chan error, 1)
+
+	go func() {
+		done <- streamPTY(r, &buf)
+	}()
+
+	// Write some data and close
+	_, _ = w.Write([]byte("test output"))
+	_ = w.Close()
+
+	err := <-done
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if buf.String() != "test output" {
+		t.Errorf("Expected 'test output', got %q", buf.String())
+	}
+}
+
+func TestStreamPTY_MultipleWrites(t *testing.T) {
+	r, w := io.Pipe()
+
+	var buf bytes.Buffer
+	done := make(chan error, 1)
+
+	go func() {
+		done <- streamPTY(r, &buf)
+	}()
+
+	// Write multiple chunks
+	_, _ = w.Write([]byte("chunk1"))
+	_, _ = w.Write([]byte("chunk2"))
+	_, _ = w.Write([]byte("chunk3"))
+	_ = w.Close()
+
+	err := <-done
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if buf.String() != "chunk1chunk2chunk3" {
+		t.Errorf("Expected 'chunk1chunk2chunk3', got %q", buf.String())
+	}
+}
+
+func TestStreamPTY_MultipleWriters(t *testing.T) {
+	r, w := io.Pipe()
+
+	var buf1, buf2 bytes.Buffer
+	done := make(chan error, 1)
+
+	go func() {
+		done <- streamPTY(r, &buf1, &buf2)
+	}()
+
+	_, _ = w.Write([]byte("multi"))
+	_ = w.Close()
+
+	err := <-done
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if buf1.String() != "multi" {
+		t.Errorf("Expected 'multi' in buf1, got %q", buf1.String())
+	}
+	if buf2.String() != "multi" {
+		t.Errorf("Expected 'multi' in buf2, got %q", buf2.String())
+	}
+}
+
+func TestStreamPTY_WriteError(t *testing.T) {
+	r, w := io.Pipe()
+
+	ew := &errorWriter{}
+	done := make(chan error, 1)
+
+	go func() {
+		done <- streamPTY(r, ew)
+	}()
+
+	_, _ = w.Write([]byte("test"))
+	_ = w.Close()
+
+	err := <-done
+	if err == nil {
+		t.Error("Expected error from streamPTY")
+	}
+}
+
+func TestRunner_Run_BasicExecution(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+		},
+		StreamAgentOutput: false,
+	}
+
+	var stdout, stderr bytes.Buffer
+	runner := NewRunner(settings)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+
+	output, err := runner.Run(context.Background(), "hello", 1)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	// Output should contain "hello" (echo command)
+	if output == "" {
+		t.Error("Expected non-empty output")
+	}
+}
+
+func TestRunner_Run_WithStreaming(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+		},
+		StreamAgentOutput: true,
+	}
+
+	var stdout, stderr bytes.Buffer
+	runner := NewRunner(settings)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+
+	output, err := runner.Run(context.Background(), "streamed", 1)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if output == "" {
+		t.Error("Expected non-empty output")
+	}
+}
+
+func TestRunner_Run_CancelledContext(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "sleep",
+		},
+		StreamAgentOutput: false,
+	}
+
+	var stdout, stderr bytes.Buffer
+	runner := NewRunner(settings)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := runner.Run(ctx, "10", 1)
+	if err == nil {
+		t.Error("Expected error for cancelled context")
+	}
+}
+
+func TestRunner_Run_WithPromptFile(t *testing.T) {
+	// Create .ralph directory
+	if err := os.MkdirAll(RalphDir, 0755); err != nil {
+		t.Fatalf("Failed to create .ralph directory: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(RalphDir) }()
+
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "codex",
+		},
+		StreamAgentOutput: false,
+	}
+
+	var stdout, stderr bytes.Buffer
+	runner := NewRunner(settings)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+
+	// The run will fail since codex isn't installed, but the prompt file should be created and cleaned up
+	_, _ = runner.Run(context.Background(), "test prompt content", 1)
+
+	// Verify prompt file was cleaned up
+	promptFile := ".ralph/prompt_001.txt"
+	if _, err := os.Stat(promptFile); !os.IsNotExist(err) {
+		t.Error("Expected prompt file to be cleaned up")
+	}
+}
+
+func TestRunner_Run_VerboseLogging(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+		},
+		StreamAgentOutput: true,
+	}
+
+	var stdout, stderr bytes.Buffer
+	runner := NewRunner(settings)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+	runner.Verbose = true
+
+	_, _ = runner.Run(context.Background(), "verbose test", 1)
+
+	// Stderr should contain verbose output (the [ralph] prefix for agent command is always printed)
+	if !bytes.Contains(stderr.Bytes(), []byte("[ralph]")) {
+		t.Error("Expected verbose output in stderr")
 	}
 }

@@ -440,3 +440,200 @@ func TestLoadWithLocal_InvalidTypeError(t *testing.T) {
 		t.Errorf("error should mention maximumIterations, got: %v", err)
 	}
 }
+
+func TestLoad_InvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	content := `{invalid json}`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Error("Load() should return error for invalid JSON")
+	}
+}
+
+func TestLoad_ReAppliesDefaults(t *testing.T) {
+	// Test that Load re-applies defaults for zero/empty values in JSON
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	// JSON with zero/empty values that should get default values
+	content := `{
+		"maximumIterations": 0,
+		"completionResponse": "",
+		"outputTruncateChars": 0,
+		"agent": {"command": "claude"}
+	}`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	// Zero values should be replaced with defaults
+	if s.MaximumIterations != DefaultMaximumIterations {
+		t.Errorf("MaximumIterations = %d, want default %d", s.MaximumIterations, DefaultMaximumIterations)
+	}
+	if s.CompletionResponse != DefaultCompletionResponse {
+		t.Errorf("CompletionResponse = %q, want default %q", s.CompletionResponse, DefaultCompletionResponse)
+	}
+	if s.OutputTruncateChars != DefaultOutputTruncateChars {
+		t.Errorf("OutputTruncateChars = %d, want default %d", s.OutputTruncateChars, DefaultOutputTruncateChars)
+	}
+}
+
+func TestLoadWithLocal_NoLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "settings.json")
+	// No local file created
+
+	baseContent := `{
+		"maximumIterations": 15,
+		"agent": {"command": "claude"}
+	}`
+
+	if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := LoadWithLocal(basePath)
+	if err != nil {
+		t.Fatalf("LoadWithLocal returned error: %v", err)
+	}
+
+	// Should have values from base file
+	if s.MaximumIterations != 15 {
+		t.Errorf("MaximumIterations = %d, want 15", s.MaximumIterations)
+	}
+}
+
+func TestLoadWithLocal_BaseFileError(t *testing.T) {
+	// Create a path that will fail to read (e.g., directory instead of file)
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "settings.json")
+
+	// Create settings.json as a directory to cause a read error
+	if err := os.MkdirAll(basePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadWithLocal(basePath)
+	if err == nil {
+		t.Error("LoadWithLocal() should return error when base file is a directory")
+	}
+}
+
+func TestLoadWithLocal_LocalFileReadError(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "settings.json")
+	localPath := filepath.Join(dir, "settings.local.json")
+
+	baseContent := `{"agent": {"command": "claude"}}`
+	if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create local file as a directory to cause a read error
+	if err := os.MkdirAll(localPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadWithLocal(basePath)
+	if err == nil {
+		t.Error("LoadWithLocal() should return error when local file is a directory")
+	}
+}
+
+func TestDeepMerge_InvalidTopLevelJSON(t *testing.T) {
+	s := NewDefaults()
+	err := deepMerge(&s, []byte(`not valid json`))
+	if err == nil {
+		t.Error("deepMerge() should return error for invalid JSON")
+	}
+}
+
+func TestDeepMerge_SCMCreatesNewObject(t *testing.T) {
+	s := NewDefaults()
+	// SCM is nil by default
+
+	localJSON := `{"scm": {"command": "git", "tasks": ["commit"]}}`
+	if err := deepMerge(&s, []byte(localJSON)); err != nil {
+		t.Fatal(err)
+	}
+
+	if s.SCM == nil {
+		t.Error("SCM should be created")
+	}
+	if s.SCM.Command != "git" {
+		t.Errorf("SCM.Command = %q, want git", s.SCM.Command)
+	}
+	if len(s.SCM.Tasks) != 1 || s.SCM.Tasks[0] != "commit" {
+		t.Errorf("SCM.Tasks = %v, want [commit]", s.SCM.Tasks)
+	}
+}
+
+func TestValidate_GuardrailEmptyCommand(t *testing.T) {
+	s := NewDefaults()
+	s.Agent.Command = "claude"
+	s.Guardrails = []Guardrail{
+		{Command: "", FailAction: "APPEND"},
+	}
+
+	err := s.Validate()
+	if err == nil {
+		t.Error("Validate() should return error for empty guardrail command")
+	}
+	if !strings.Contains(err.Error(), "guardrails[0].command") {
+		t.Errorf("error should mention guardrails[0].command, got: %v", err)
+	}
+}
+
+func TestValidate_GuardrailInvalidFailAction(t *testing.T) {
+	s := NewDefaults()
+	s.Agent.Command = "claude"
+	s.Guardrails = []Guardrail{
+		{Command: "make test", FailAction: "INVALID"},
+	}
+
+	err := s.Validate()
+	if err == nil {
+		t.Error("Validate() should return error for invalid failAction")
+	}
+	if !strings.Contains(err.Error(), "guardrails[0].failAction") {
+		t.Errorf("error should mention guardrails[0].failAction, got: %v", err)
+	}
+}
+
+func TestValidate_GuardrailValidFailActions(t *testing.T) {
+	tests := []string{"APPEND", "PREPEND", "REPLACE", "append", "prepend", "replace"}
+	for _, action := range tests {
+		t.Run(action, func(t *testing.T) {
+			s := NewDefaults()
+			s.Agent.Command = "claude"
+			s.Guardrails = []Guardrail{
+				{Command: "make test", FailAction: action},
+			}
+
+			err := s.Validate()
+			if err != nil {
+				t.Errorf("Validate() returned error for valid failAction %q: %v", action, err)
+			}
+		})
+	}
+}
+
+func TestValidate_NegativeMaximumIterations(t *testing.T) {
+	s := NewDefaults()
+	s.Agent.Command = "claude"
+	s.MaximumIterations = -5
+
+	err := s.Validate()
+	if err == nil {
+		t.Error("Validate() should return error for negative maximumIterations")
+	}
+}

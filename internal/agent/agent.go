@@ -70,20 +70,14 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 	if r.Settings.StreamAgentOutput && runtime.GOOS != "windows" {
 		ptmx, err := pty.Start(cmd)
 		if err == nil {
-			defer func() {
-				_ = ptmx.Close()
-			}()
-
-			mw := io.MultiWriter(&outputBuf, r.Stdout)
-			copyDone := make(chan struct{})
-			var copyErr error
+			copyDone := make(chan error, 1)
 			go func() {
-				_, copyErr = io.Copy(mw, ptmx)
-				close(copyDone)
+				copyDone <- streamPTY(ptmx, &outputBuf, r.Stdout)
 			}()
 
 			err = cmd.Wait()
-			<-copyDone
+			_ = ptmx.Close()
+			copyErr := <-copyDone
 			if err == nil && copyErr != nil {
 				err = copyErr
 			}
@@ -111,6 +105,50 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 	err := cmd.Run()
 
 	return outputBuf.String(), err
+}
+
+type flushWriter interface {
+	Flush() error
+}
+
+type flushWriterNoErr interface {
+	Flush()
+}
+
+func streamPTY(src io.Reader, writers ...io.Writer) error {
+	buf := make([]byte, 1024)
+	for {
+		n, err := src.Read(buf)
+		if n > 0 {
+			if writeErr := writeAndFlush(writers, buf[:n]); writeErr != nil {
+				return writeErr
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func writeAndFlush(writers []io.Writer, p []byte) error {
+	for _, w := range writers {
+		n, err := w.Write(p)
+		if err != nil {
+			return err
+		}
+		if n != len(p) {
+			return io.ErrShortWrite
+		}
+		if fw, ok := w.(flushWriter); ok {
+			_ = fw.Flush()
+		} else if fw, ok := w.(flushWriterNoErr); ok {
+			fw.Flush()
+		}
+	}
+	return nil
 }
 
 // shellQuote quotes a string for safe use in shell commands.
