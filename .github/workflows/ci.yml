@@ -2,9 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   test:
@@ -15,29 +13,24 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Install tools
+        run: make tools
+      - name: Format checks
+        run: make fmt-check
+      - name: Lint
+        run: make lint
+      - name: Test
+        run: make test
+
+  darwin-cgo-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Test
         run: go test ./...
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Build
-        run: go build ./cmd/ralph
+      - name: Build (Keychain / cgo)
+        run: CGO_ENABLED=1 go build ./cmd/ralph
