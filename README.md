@@ -1,6 +1,6 @@
 # Ralph CLI
 
-A deterministic outer loop that repeatedly runs a CLI LLM agent until it returns a completion response. Ralph enforces guardrails (build/lint/test) and optionally runs SCM commands when guardrails pass.
+A deterministic outer loop that repeatedly runs a AI agent until it returns a completion response. Ralph enforces guardrails (build/lint/test) and optionally runs SCM commands when guardrails pass.
 
 ## Prerequisites
 
@@ -8,6 +8,12 @@ A deterministic outer loop that repeatedly runs a CLI LLM agent until it returns
 - golangci-lint (for development)
 
 ## Installation
+
+### Homebre
+
+```bash
+brew install richclement/tap/ralph-cli
+```
 
 ### Using go install
 
@@ -17,13 +23,13 @@ go install github.com/richclement/ralph-cli/cmd/ralph@latest
 
 This downloads and installs the binary to `$GOPATH/bin` (or `$HOME/go/bin` if `GOPATH` is unset).
 
-### From Source
+### Build From Source
 
 ```bash
 git clone https://github.com/richclement/ralph-cli.git
 cd ralph-cli
 make build
-# Binary at ./ralph
+# Binary at ./bin/ralph
 
 # Optionally install to $GOPATH/bin
 make install
@@ -39,7 +45,7 @@ ralph "Fix the failing tests"
 ralph -f prompt.txt
 
 # With options
-ralph "Implement the feature" -m 5 -c "COMPLETE" -V
+ralph "Implement the feature. Responde with <response>COMPLETE</response> when done." -m 5 -c "<response>COMPLETE</response>" -V
 ```
 
 ### CLI Flags
@@ -106,14 +112,6 @@ Ralph uses JSON configuration files located in `.ralph/`:
 - `APPEND` - Append failed output to the prompt
 - `PREPEND` - Prepend failed output to the prompt
 - `REPLACE` - Replace the prompt with failed output
-
-### Agent Command Inference
-
-Ralph automatically adds non-REPL flags based on the agent command:
-
-- `claude` → `-p`
-- `codex` → `e`
-- `amp` → `-x`
 
 ## Completion Detection
 
