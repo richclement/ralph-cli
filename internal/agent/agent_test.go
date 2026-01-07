@@ -200,7 +200,6 @@ func TestRunShell_Success(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	output, err := RunShell(context.Background(), "echo hello", false, &stdout, &stderr)
-
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -213,7 +212,6 @@ func TestRunShell_WithStream(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	output, err := RunShell(context.Background(), "echo hello", true, &stdout, &stderr)
-
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -251,7 +249,7 @@ func TestRunShell_CancelledContext(t *testing.T) {
 
 func TestBuildArgs_Codex(t *testing.T) {
 	// Create .ralph directory for prompt file
-	if err := os.MkdirAll(RalphDir, 0755); err != nil {
+	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
 		t.Fatalf("Failed to create .ralph directory: %v", err)
 	}
 	defer func() { _ = os.RemoveAll(RalphDir) }()
@@ -576,7 +574,7 @@ func TestRunner_Run_CancelledContext(t *testing.T) {
 
 func TestRunner_Run_WithPromptFile(t *testing.T) {
 	// Create .ralph directory
-	if err := os.MkdirAll(RalphDir, 0755); err != nil {
+	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
 		t.Fatalf("Failed to create .ralph directory: %v", err)
 	}
 	defer func() { _ = os.RemoveAll(RalphDir) }()

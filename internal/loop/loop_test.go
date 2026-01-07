@@ -99,7 +99,7 @@ func TestBuildPrompt_PromptFile(t *testing.T) {
 	// Create temp file
 	tmpDir := t.TempDir()
 	promptFile := filepath.Join(tmpDir, "prompt.txt")
-	if err := os.WriteFile(promptFile, []byte("file prompt content"), 0644); err != nil {
+	if err := os.WriteFile(promptFile, []byte("file prompt content"), 0o644); err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 
@@ -429,7 +429,7 @@ func TestRunner_Run_WithGuardrails_AllPass(t *testing.T) {
 	defer func() { _ = os.Chdir(origDir) }()
 
 	// Create .ralph directory
-	_ = os.MkdirAll(".ralph", 0755)
+	_ = os.MkdirAll(".ralph", 0o755)
 
 	runner := NewRunner(Options{
 		Prompt:   "<response>DONE</response>",
@@ -471,7 +471,7 @@ func TestRunner_Run_WithGuardrails_OneFails(t *testing.T) {
 	defer func() { _ = os.Chdir(origDir) }()
 
 	// Create .ralph directory
-	_ = os.MkdirAll(".ralph", 0755)
+	_ = os.MkdirAll(".ralph", 0o755)
 
 	runner := NewRunner(Options{
 		Prompt:   "test prompt",

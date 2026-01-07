@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/creack/pty"
+
 	"github.com/richclement/ralph-cli/internal/config"
 	"github.com/richclement/ralph-cli/internal/stream"
 )
@@ -76,13 +77,13 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 		agentName := strings.ToLower(strings.TrimSuffix(filepath.Base(r.Settings.Agent.Command), ".exe"))
 		var rawLog io.Writer
 		if agentName == "claude" {
-			if err := os.MkdirAll(RalphDir, 0755); err != nil {
+			if err := os.MkdirAll(RalphDir, 0o755); err != nil {
 				if r.Verbose {
 					_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to create %s: %v\n", RalphDir, err)
 				}
 			} else {
 				logPath := filepath.Join(RalphDir, "stream-json.log")
-				file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+				file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 				if err != nil {
 					if r.Verbose {
 						_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to open stream log %s: %v\n", logPath, err)
@@ -252,7 +253,7 @@ func (r *Runner) buildArgs(prompt string, iteration int) ([]string, string) {
 	// For Codex with "e" subcommand, write prompt to file (matching Python behavior)
 	if strings.ToLower(cmdName) == "codex" && len(args) > 0 && args[0] == "e" {
 		promptFile = filepath.Join(RalphDir, fmt.Sprintf("prompt_%03d.txt", iteration))
-		if err := os.WriteFile(promptFile, []byte(prompt), 0644); err == nil {
+		if err := os.WriteFile(promptFile, []byte(prompt), 0o644); err == nil {
 			args = append(args, promptFile)
 		} else {
 			// Fall back to passing prompt as argument if file write fails

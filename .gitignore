@@ -1,7 +1,11 @@
 # Binaries
-ralph
+/ralph
+/bin/
 *.exe
 dist/
+
+# Local tools
+.tools/
 
 # Runtime
 .ralph/*.log

@@ -156,7 +156,6 @@ func TestRunner_Run_NoSCMConfig(t *testing.T) {
 
 	runner := NewRunner(settings, false)
 	err := runner.Run(context.Background(), 1)
-
 	if err != nil {
 		t.Errorf("Expected nil error when SCM is nil, got %v", err)
 	}
@@ -175,7 +174,6 @@ func TestRunner_Run_EmptyTasks(t *testing.T) {
 
 	runner := NewRunner(settings, false)
 	err := runner.Run(context.Background(), 1)
-
 	if err != nil {
 		t.Errorf("Expected nil error when tasks are empty, got %v", err)
 	}

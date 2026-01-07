@@ -50,7 +50,7 @@ func TestLoad_ValidFile(t *testing.T) {
 			{"command": "make test", "failAction": "APPEND"}
 		]
 	}`
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -156,10 +156,10 @@ func TestLoadWithLocal(t *testing.T) {
 		"agent": {"flags": ["--verbose"]}
 	}`
 
-	if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+	if err := os.WriteFile(basePath, []byte(baseContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(localPath, []byte(localContent), 0644); err != nil {
+	if err := os.WriteFile(localPath, []byte(localContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -425,10 +425,10 @@ func TestLoadWithLocal_InvalidTypeError(t *testing.T) {
 	// Invalid: maximumIterations should be int, not string
 	localContent := `{"maximumIterations": "not-a-number"}`
 
-	if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+	if err := os.WriteFile(basePath, []byte(baseContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(localPath, []byte(localContent), 0644); err != nil {
+	if err := os.WriteFile(localPath, []byte(localContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -445,7 +445,7 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 	content := `{invalid json}`
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -466,7 +466,7 @@ func TestLoad_ReAppliesDefaults(t *testing.T) {
 		"outputTruncateChars": 0,
 		"agent": {"command": "claude"}
 	}`
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -497,7 +497,7 @@ func TestLoadWithLocal_NoLocalFile(t *testing.T) {
 		"agent": {"command": "claude"}
 	}`
 
-	if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+	if err := os.WriteFile(basePath, []byte(baseContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -518,7 +518,7 @@ func TestLoadWithLocal_BaseFileError(t *testing.T) {
 	basePath := filepath.Join(dir, "settings.json")
 
 	// Create settings.json as a directory to cause a read error
-	if err := os.MkdirAll(basePath, 0755); err != nil {
+	if err := os.MkdirAll(basePath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -534,12 +534,12 @@ func TestLoadWithLocal_LocalFileReadError(t *testing.T) {
 	localPath := filepath.Join(dir, "settings.local.json")
 
 	baseContent := `{"agent": {"command": "claude"}}`
-	if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+	if err := os.WriteFile(basePath, []byte(baseContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create local file as a directory to cause a read error
-	if err := os.MkdirAll(localPath, 0755); err != nil {
+	if err := os.MkdirAll(localPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 

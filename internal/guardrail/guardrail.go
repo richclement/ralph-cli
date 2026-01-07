@@ -84,7 +84,7 @@ func (r *Runner) RunWithSlugTracker(ctx context.Context, g config.Guardrail, ite
 	// Write full output to log file with de-duplication
 	slug := GenerateSlug(g.Command)
 	logFile := r.generateLogFilename(iteration, slug, slugCounts)
-	if writeErr := os.WriteFile(logFile, []byte(output), 0644); writeErr != nil {
+	if writeErr := os.WriteFile(logFile, []byte(output), 0o644); writeErr != nil {
 		_, _ = fmt.Fprintf(r.Stderr, "[ralph] warning: failed to write guardrail log: %v\n", writeErr)
 	}
 	result.LogFile = logFile
