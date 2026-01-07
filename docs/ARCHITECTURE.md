@@ -7,11 +7,12 @@ and optionally executes SCM tasks (commit/push) after guardrails pass.
 
 ## High-Level Flow
 1. Build the prompt (inline text or re-read prompt file).
-2. Run the agent command and capture full output (optionally streaming).
-3. Run guardrails; on failure, feed truncated output into the next prompt
+2. Prepend iteration summary when configured.
+3. Run the agent command and capture full output (optionally streaming).
+4. Run guardrails; on failure, feed truncated output into the next prompt
    according to each guardrail's fail action.
-4. If guardrails pass, optionally run SCM tasks.
-5. Check completion response; stop when matched or exit after max iterations.
+5. If guardrails pass, optionally run SCM tasks.
+6. Check completion response; stop when matched or exit after max iterations.
 
 ## Key Packages
 - `cmd/ralph/main.go` sets up CLI subcommands (`init` and `run`), signal
@@ -47,6 +48,7 @@ Settings are loaded in this order:
 - Exactly one prompt source required (positional, `--prompt`, or `--prompt-file`).
 - Guardrail failures feed into the next prompt using `APPEND`, `PREPEND`, or
   `REPLACE`, with a two-newline separator.
+- If `includeIterationCountInPrompt` is enabled, prepend `Iteration X of Y, Z remaining.` with two newlines.
 
 For Codex, the prompt is written to `.ralph/prompt_###.txt` and passed as a file
 argument when the `e` subcommand is used.

@@ -208,6 +208,7 @@ Example:
   "completionResponse": "DONE",
   "outputTruncateChars": 5000,
   "streamAgentOutput": true,
+  "includeIterationCountInPrompt": false,
   "agent": {
     "command": "claude",
     "flags": ["--model opus", "--no-auto-compact"]
@@ -232,6 +233,7 @@ type Settings struct {
     CompletionResponse string       `json:"completionResponse"`
     OutputTruncateChars int         `json:"outputTruncateChars"`
     StreamAgentOutput  bool         `json:"streamAgentOutput"`
+    IncludeIterationCountInPrompt bool `json:"includeIterationCountInPrompt"`
     Agent              AgentConfig  `json:"agent"`
     Guardrails         []Guardrail  `json:"guardrails"`
     SCM                *SCMConfig   `json:"scm,omitempty"`
@@ -286,13 +288,14 @@ For each iteration:
    - If `--prompt-file` is provided, re-read the file on each iteration.
 2. If any guardrail failed in the previous iteration and its `failAction` is `APPEND` or `PREPEND`, add the failed guardrail output to the base prompt.
    - Separate new text from existing text with two newlines.
-3. Invoke the agent with configured command and flags.
+3. If `includeIterationCountInPrompt` is enabled, prepend `Iteration X of Y, Z remaining.` with two newlines separating it from the prompt.
+4. Invoke the agent with configured command and flags.
    - Always capture full agent output for completion detection.
    - If `streamAgentOutput` is enabled, tee the agent output to the console as it arrives (use `io.TeeReader` or similar).
-4. Run guardrails after the agent response.
-5. Save each guardrail output to `./.ralph/guardrail_<iter>_<slug>.log`.
-6. If guardrails failed, apply their `failAction` to the next prompt and continue the loop.
-7. If all guardrails pass, check for completion response and stop if matched.
+5. Run guardrails after the agent response.
+6. Save each guardrail output to `./.ralph/guardrail_<iter>_<slug>.log`.
+7. If guardrails failed, apply their `failAction` to the next prompt and continue the loop.
+8. If all guardrails pass, check for completion response and stop if matched.
 
 If max iterations is reached without completion, exit non-zero (exit code 1).
 
@@ -301,6 +304,7 @@ If max iterations is reached without completion, exit non-zero (exit code 1).
 - `--prompt-file` is re-read each iteration to construct the base prompt.
 - If any guardrail failed in the previous iteration and its `failAction` is `APPEND` or `PREPEND`, include the failed guardrail output in the next prompt.
 - Separate appended/prepended guardrail text from existing prompt text with two newlines.
+- If `includeIterationCountInPrompt` is enabled, prepend `Iteration X of Y, Z remaining.` with two newlines before the prompt content.
 
 ---
 

@@ -110,6 +110,7 @@ Ralph uses JSON configuration files located in `.ralph/`:
   "completionResponse": "DONE",
   "outputTruncateChars": 5000,
   "streamAgentOutput": true,
+  "includeIterationCountInPrompt": false,
   "agent": {
     "command": "claude",
     "flags": ["--model", "opus", "--no-auto-compact"]
@@ -135,6 +136,7 @@ Ralph uses JSON configuration files located in `.ralph/`:
 | `completionResponse` | `DONE` | Response text to detect completion |
 | `outputTruncateChars` | `5000` | Max chars of guardrail output sent to agent |
 | `streamAgentOutput` | `true` | Stream agent output to console |
+| `includeIterationCountInPrompt` | `false` | Prepend iteration summary to each prompt |
 | `agent.command` | (required) | Agent CLI command (e.g., `claude`, `codex`, `amp`) |
 | `agent.flags` | `[]` | Additional flags for agent command |
 | `guardrails` | `[]` | Array of guardrail commands |

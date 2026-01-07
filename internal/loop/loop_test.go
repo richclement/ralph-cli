@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/richclement/ralph-cli/internal/config"
@@ -86,12 +87,59 @@ func TestBuildPrompt_DirectPrompt(t *testing.T) {
 		Settings: settings,
 	})
 
-	prompt, err := runner.buildPrompt(nil)
+	prompt, err := runner.buildPrompt(nil, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if prompt != "direct prompt text" {
 		t.Errorf("got %q, want %q", prompt, "direct prompt text")
+	}
+}
+
+func TestBuildPrompt_IterationSummaryDisabled(t *testing.T) {
+	settings := &config.Settings{
+		Agent:               config.AgentConfig{Command: "echo"},
+		MaximumIterations:   3,
+		CompletionResponse:  "DONE",
+		OutputTruncateChars: 1000,
+	}
+
+	runner := NewRunner(Options{
+		Prompt:   "base prompt",
+		Settings: settings,
+	})
+
+	prompt, err := runner.buildPrompt(nil, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if prompt != "base prompt" {
+		t.Errorf("got %q, want %q", prompt, "base prompt")
+	}
+}
+
+func TestBuildPrompt_IterationSummaryEnabled(t *testing.T) {
+	settings := &config.Settings{
+		Agent:                         config.AgentConfig{Command: "echo"},
+		MaximumIterations:             10,
+		CompletionResponse:            "DONE",
+		OutputTruncateChars:           1000,
+		IncludeIterationCountInPrompt: true,
+	}
+
+	runner := NewRunner(Options{
+		Prompt:   "base prompt",
+		Settings: settings,
+	})
+
+	prompt, err := runner.buildPrompt(nil, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := "Iteration 3 of 10, 7 remaining.\n\nbase prompt"
+	if prompt != expected {
+		t.Errorf("got %q, want %q", prompt, expected)
 	}
 }
 
@@ -115,7 +163,7 @@ func TestBuildPrompt_PromptFile(t *testing.T) {
 		Settings:   settings,
 	})
 
-	prompt, err := runner.buildPrompt(nil)
+	prompt, err := runner.buildPrompt(nil, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,7 +185,7 @@ func TestBuildPrompt_PromptFileNotFound(t *testing.T) {
 		Settings:   settings,
 	})
 
-	_, err := runner.buildPrompt(nil)
+	_, err := runner.buildPrompt(nil, 1)
 	if err == nil {
 		t.Error("expected error for nonexistent prompt file")
 	}
@@ -167,7 +215,7 @@ func TestBuildPrompt_WithFailedResults(t *testing.T) {
 		},
 	}
 
-	prompt, err := runner.buildPrompt(failedResults)
+	prompt, err := runner.buildPrompt(failedResults, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -207,7 +255,7 @@ func TestBuildPrompt_WithPrependAction(t *testing.T) {
 		},
 	}
 
-	prompt, err := runner.buildPrompt(failedResults)
+	prompt, err := runner.buildPrompt(failedResults, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -215,6 +263,55 @@ func TestBuildPrompt_WithPrependAction(t *testing.T) {
 	// With PREPEND action, base prompt should NOT come first
 	if len(prompt) >= len("base prompt") && prompt[:len("base prompt")] == "base prompt" {
 		t.Error("expected failure info to be prepended to base prompt")
+	}
+}
+
+func TestBuildPrompt_IterationSummaryWithPrependAction(t *testing.T) {
+	settings := &config.Settings{
+		Agent:                         config.AgentConfig{Command: "echo"},
+		MaximumIterations:             5,
+		CompletionResponse:            "DONE",
+		OutputTruncateChars:           1000,
+		IncludeIterationCountInPrompt: true,
+	}
+
+	runner := NewRunner(Options{
+		Prompt:   "base prompt",
+		Settings: settings,
+	})
+
+	failedResults := []guardrail.Result{
+		{
+			Guardrail: config.Guardrail{
+				Command:    "make test",
+				FailAction: "PREPEND",
+			},
+			ExitCode: 1,
+			Output:   "test failure output",
+		},
+	}
+
+	prompt, err := runner.buildPrompt(failedResults, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	summary := "Iteration 2 of 5, 3 remaining."
+	if !strings.HasPrefix(prompt, summary+"\n\n") {
+		gotPrefix := prompt
+		if len(prompt) > len(summary) {
+			gotPrefix = prompt[:len(summary)]
+		}
+		t.Fatalf("expected prompt to start with iteration summary, got %q", gotPrefix)
+	}
+
+	failureIndex := strings.Index(prompt, "test failure output")
+	baseIndex := strings.Index(prompt, "base prompt")
+	if failureIndex == -1 || baseIndex == -1 {
+		t.Fatalf("expected prompt to include failure output and base prompt")
+	}
+	if failureIndex < len(summary) || failureIndex > baseIndex {
+		t.Errorf("expected failure output to appear after summary and before base prompt")
 	}
 }
 
@@ -242,7 +339,7 @@ func TestBuildPrompt_WithReplaceAction(t *testing.T) {
 		},
 	}
 
-	prompt, err := runner.buildPrompt(failedResults)
+	prompt, err := runner.buildPrompt(failedResults, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -587,7 +684,7 @@ func TestBuildPrompt_MultipleFailures(t *testing.T) {
 		},
 	}
 
-	prompt, err := runner.buildPrompt(failedResults)
+	prompt, err := runner.buildPrompt(failedResults, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

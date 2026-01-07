@@ -18,13 +18,14 @@ const (
 
 // Settings represents the runtime configuration.
 type Settings struct {
-	MaximumIterations   int         `json:"maximumIterations"`
-	CompletionResponse  string      `json:"completionResponse"`
-	OutputTruncateChars int         `json:"outputTruncateChars"`
-	StreamAgentOutput   bool        `json:"streamAgentOutput"`
-	Agent               AgentConfig `json:"agent"`
-	Guardrails          []Guardrail `json:"guardrails"`
-	SCM                 *SCMConfig  `json:"scm,omitempty"`
+	MaximumIterations             int         `json:"maximumIterations"`
+	CompletionResponse            string      `json:"completionResponse"`
+	OutputTruncateChars           int         `json:"outputTruncateChars"`
+	StreamAgentOutput             bool        `json:"streamAgentOutput"`
+	IncludeIterationCountInPrompt bool        `json:"includeIterationCountInPrompt"`
+	Agent                         AgentConfig `json:"agent"`
+	Guardrails                    []Guardrail `json:"guardrails"`
+	SCM                           *SCMConfig  `json:"scm,omitempty"`
 }
 
 // AgentConfig defines the agent command and flags.
@@ -55,10 +56,11 @@ type CLIOverrides struct {
 // NewDefaults returns a Settings struct with default values.
 func NewDefaults() Settings {
 	return Settings{
-		MaximumIterations:   DefaultMaximumIterations,
-		CompletionResponse:  DefaultCompletionResponse,
-		OutputTruncateChars: DefaultOutputTruncateChars,
-		StreamAgentOutput:   DefaultStreamAgentOutput,
+		MaximumIterations:             DefaultMaximumIterations,
+		CompletionResponse:            DefaultCompletionResponse,
+		OutputTruncateChars:           DefaultOutputTruncateChars,
+		StreamAgentOutput:             DefaultStreamAgentOutput,
+		IncludeIterationCountInPrompt: false,
 	}
 }
 
@@ -158,6 +160,13 @@ func deepMerge(settings *Settings, data []byte) error {
 			return fmt.Errorf("streamAgentOutput: %w", err)
 		}
 		settings.StreamAgentOutput = val
+	}
+	if v, ok := local["includeIterationCountInPrompt"]; ok {
+		var val bool
+		if err := json.Unmarshal(v, &val); err != nil {
+			return fmt.Errorf("includeIterationCountInPrompt: %w", err)
+		}
+		settings.IncludeIterationCountInPrompt = val
 	}
 
 	// Handle agent object (recursive merge)
