@@ -185,7 +185,7 @@ func streamPTY(src io.Reader, writers ...io.Writer) error {
 			}
 		}
 		if err != nil {
-			if err == io.EOF {
+			if err == io.EOF || isPTYEOF(err) {
 				return nil
 			}
 			return err
