@@ -33,6 +33,7 @@ func versionString() string {
 // CLI defines the command-line interface for ralph.
 type CLI struct {
 	Prompt             string           `arg:"" optional:"" help:"Prompt string to send to agent."`
+	PromptFlag         string           `name:"prompt" short:"p" help:"Prompt string to send to agent."`
 	PromptFile         string           `name:"prompt-file" short:"f" help:"Path to file containing prompt text."`
 	MaximumIterations  int              `name:"maximum-iterations" short:"m" help:"Maximum iterations before stopping."`
 	CompletionResponse string           `name:"completion-response" short:"c" help:"Completion response text."`
@@ -42,25 +43,45 @@ type CLI struct {
 	Version            kong.VersionFlag `name:"version" short:"v" help:"Print version and exit."`
 }
 
-// Validate checks that exactly one of Prompt or PromptFile is provided.
+// Validate checks that exactly one prompt source is provided.
 func (c *CLI) Validate() error {
-	hasPrompt := c.Prompt != ""
+	hasPositional := c.Prompt != ""
+	hasPromptFlag := c.PromptFlag != ""
 	hasPromptFile := c.PromptFile != ""
 
-	if hasPrompt && hasPromptFile {
-		return fmt.Errorf("cannot specify both prompt and --prompt-file")
+	count := 0
+	if hasPositional {
+		count++
 	}
-	if !hasPrompt && !hasPromptFile {
-		return fmt.Errorf("must specify either prompt or --prompt-file")
+	if hasPromptFlag {
+		count++
+	}
+	if hasPromptFile {
+		count++
+	}
+
+	if count > 1 {
+		return fmt.Errorf("cannot specify multiple prompt sources (positional, --prompt, --prompt-file)")
+	}
+	if count == 0 {
+		return fmt.Errorf("must specify prompt (positional arg, --prompt, or --prompt-file)")
 	}
 	return nil
+}
+
+// GetPrompt returns the effective prompt from either positional arg or --prompt flag.
+func (c *CLI) GetPrompt() string {
+	if c.PromptFlag != "" {
+		return c.PromptFlag
+	}
+	return c.Prompt
 }
 
 func main() {
 	var cli CLI
 	parser, err := kong.New(&cli,
 		kong.Name("ralph"),
-		kong.Description("Deterministic outer loop that runs a CLI LLM agent until completion."),
+		kong.Description("Deterministic outer loop that runs an AI agent until completion."),
 		kong.Vars{"version": versionString()},
 		kong.UsageOnError(),
 		kong.Exit(func(code int) {
@@ -153,7 +174,7 @@ func main() {
 
 	// Run the main loop
 	loopRunner := loop.NewRunner(loop.Options{
-		Prompt:     cli.Prompt,
+		Prompt:     cli.GetPrompt(),
 		PromptFile: cli.PromptFile,
 		Settings:   &settings,
 		Verbose:    cli.Verbose,

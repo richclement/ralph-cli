@@ -76,6 +76,7 @@ Using kong for argument parsing:
 ```go
 type CLI struct {
     Prompt             string           `arg:"" optional:"" help:"Prompt string to send to agent."`
+    PromptFlag         string           `name:"prompt" short:"p" help:"Prompt string to send to agent."`
     PromptFile         string           `name:"prompt-file" short:"f" help:"Path to file containing prompt text."`
     MaximumIterations  int              `name:"maximum-iterations" short:"m" help:"Maximum iterations before stopping."`
     CompletionResponse string           `name:"completion-response" short:"c" help:"Completion response text."`
@@ -103,8 +104,9 @@ func main() {
 ```
 
 **Flags:**
-- `--prompt` or positional arg: prompt string
-- `--prompt-file`, `-f`: path to file contents used as prompt (mutually exclusive with prompt)
+- Positional arg: prompt string
+- `--prompt`, `-p`: prompt string (flag alternative to positional)
+- `--prompt-file`, `-f`: path to file contents used as prompt (mutually exclusive with other prompt sources)
 - `--maximum-iterations`, `-m`: integer
 - `--completion-response`, `-c`: string (default `DONE`)
 - `--settings`: path (default `./.ralph/settings.json`)
@@ -113,7 +115,7 @@ func main() {
 - `--version`, `-v`: print version and exit
 
 **Validation:**
-- Exactly one of `--prompt` or `--prompt-file` must be provided.
+- Exactly one of positional prompt, `--prompt`, or `--prompt-file` must be provided.
 
 ---
 

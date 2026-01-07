@@ -52,6 +52,8 @@ ralph "Implement the feature. Responde with <response>COMPLETE</response> when d
 
 | Flag | Short | Description |
 |------|-------|-------------|
+| `[prompt]` | | Prompt string (positional argument) |
+| `--prompt` | `-p` | Prompt string (flag alternative to positional) |
 | `--prompt-file` | `-f` | Path to file containing prompt text |
 | `--maximum-iterations` | `-m` | Maximum iterations before stopping |
 | `--completion-response` | `-c` | Completion response text (default: `DONE`) |

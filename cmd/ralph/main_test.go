@@ -4,29 +4,47 @@ import (
 	"testing"
 )
 
-func TestCLI_Validate_BothPromptAndPromptFile(t *testing.T) {
-	cli := CLI{
-		Prompt:     "some prompt",
-		PromptFile: "some/file.txt",
+func TestCLI_Validate_MultiplePromptSources(t *testing.T) {
+	tests := []struct {
+		name       string
+		prompt     string
+		promptFlag string
+		promptFile string
+	}{
+		{"positional and file", "prompt", "", "file.txt"},
+		{"flag and file", "", "prompt", "file.txt"},
+		{"positional and flag", "prompt", "flagprompt", ""},
+		{"all three", "prompt", "flagprompt", "file.txt"},
 	}
 
-	err := cli.Validate()
-	if err == nil {
-		t.Error("expected error when both Prompt and PromptFile are set")
-	}
-	if err.Error() != "cannot specify both prompt and --prompt-file" {
-		t.Errorf("unexpected error message: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cli := CLI{
+				Prompt:     tt.prompt,
+				PromptFlag: tt.promptFlag,
+				PromptFile: tt.promptFile,
+			}
+			err := cli.Validate()
+			if err == nil {
+				t.Error("expected error when multiple prompt sources are set")
+			}
+			expected := "cannot specify multiple prompt sources (positional, --prompt, --prompt-file)"
+			if err.Error() != expected {
+				t.Errorf("unexpected error message: %v", err)
+			}
+		})
 	}
 }
 
-func TestCLI_Validate_NeitherPromptNorPromptFile(t *testing.T) {
+func TestCLI_Validate_NoPromptSource(t *testing.T) {
 	cli := CLI{}
 
 	err := cli.Validate()
 	if err == nil {
-		t.Error("expected error when neither Prompt nor PromptFile is set")
+		t.Error("expected error when no prompt source is set")
 	}
-	if err.Error() != "must specify either prompt or --prompt-file" {
+	expected := "must specify prompt (positional arg, --prompt, or --prompt-file)"
+	if err.Error() != expected {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -45,6 +63,17 @@ func TestCLI_Validate_OnlyPrompt(t *testing.T) {
 func TestCLI_Validate_OnlyPromptFile(t *testing.T) {
 	cli := CLI{
 		PromptFile: "some/file.txt",
+	}
+
+	err := cli.Validate()
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestCLI_Validate_OnlyPromptFlag(t *testing.T) {
+	cli := CLI{
+		PromptFlag: "some prompt via flag",
 	}
 
 	err := cli.Validate()
@@ -106,5 +135,32 @@ func TestCLI_Struct_DefaultValues(t *testing.T) {
 	}
 	if cli.CompletionResponse != "" {
 		t.Errorf("expected completion response to be empty by default, got %q", cli.CompletionResponse)
+	}
+}
+
+func TestCLI_GetPrompt(t *testing.T) {
+	tests := []struct {
+		name       string
+		prompt     string
+		promptFlag string
+		expected   string
+	}{
+		{"positional only", "positional", "", "positional"},
+		{"flag only", "", "flagprompt", "flagprompt"},
+		{"flag takes precedence", "positional", "flagprompt", "flagprompt"},
+		{"neither", "", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cli := CLI{
+				Prompt:     tt.prompt,
+				PromptFlag: tt.promptFlag,
+			}
+			got := cli.GetPrompt()
+			if got != tt.expected {
+				t.Errorf("GetPrompt() = %q, want %q", got, tt.expected)
+			}
+		})
 	}
 }
