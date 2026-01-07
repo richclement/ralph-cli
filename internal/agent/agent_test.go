@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/richclement/ralph-cli/internal/config"
@@ -67,7 +68,7 @@ func TestBuildArgs_Claude(t *testing.T) {
 	}
 	r := NewRunner(settings)
 
-	args, promptFile := r.buildArgs("test prompt", 1)
+	args, promptFile := r.buildArgs("test prompt", 1, RunOptions{})
 
 	// Should have -p flag for claude
 	if len(args) < 1 || args[0] != "-p" {
@@ -98,7 +99,7 @@ func TestBuildArgs_Amp(t *testing.T) {
 	}
 	r := NewRunner(settings)
 
-	args, _ := r.buildArgs("test prompt", 1)
+	args, _ := r.buildArgs("test prompt", 1, RunOptions{})
 
 	// Should have -x flag for amp
 	if len(args) < 1 || args[0] != "-x" {
@@ -120,7 +121,7 @@ func TestBuildArgs_UnknownAgent(t *testing.T) {
 	}
 	r := NewRunner(settings)
 
-	args, _ := r.buildArgs("test prompt", 1)
+	args, _ := r.buildArgs("test prompt", 1, RunOptions{})
 
 	// Should NOT have any inferred flag
 	if len(args) < 1 || args[0] == "-p" || args[0] == "-x" || args[0] == "e" {
@@ -147,7 +148,7 @@ func TestBuildArgs_PathWithExtension(t *testing.T) {
 	}
 	r := NewRunner(settings)
 
-	args, _ := r.buildArgs("test", 1)
+	args, _ := r.buildArgs("test", 1, RunOptions{})
 
 	// Should still detect claude and add -p
 	if len(args) < 1 || args[0] != "-p" {
@@ -163,7 +164,7 @@ func TestBuildArgs_FullPath(t *testing.T) {
 	}
 	r := NewRunner(settings)
 
-	args, _ := r.buildArgs("test", 1)
+	args, _ := r.buildArgs("test", 1, RunOptions{})
 
 	// Should extract basename and detect claude
 	if len(args) < 1 || args[0] != "-p" {
@@ -261,7 +262,7 @@ func TestBuildArgs_Codex(t *testing.T) {
 	}
 	r := NewRunner(settings)
 
-	args, promptFile := r.buildArgs("test prompt", 1)
+	args, promptFile := r.buildArgs("test prompt", 1, RunOptions{})
 
 	// Should have "e" subcommand for codex
 	if len(args) < 1 || args[0] != "e" {
@@ -620,5 +621,364 @@ func TestRunner_Run_VerboseLogging(t *testing.T) {
 	// Stderr should contain verbose output (the [ralph] prefix for agent command is always printed)
 	if !bytes.Contains(stderr.Bytes(), []byte("[ralph]")) {
 		t.Error("Expected verbose output in stderr")
+	}
+}
+
+func TestRunner_RunTextMode_BasicExecution(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+		},
+		StreamAgentOutput: true, // Should be ignored in text mode
+	}
+
+	var stdout, stderr bytes.Buffer
+	runner := NewRunner(settings)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+
+	output, err := runner.RunTextMode(context.Background(), "hello", 1)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	// Output should contain "hello" (echo command)
+	if output == "" {
+		t.Error("Expected non-empty output")
+	}
+}
+
+func TestRunner_RunTextMode_CancelledContext(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "sleep",
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	runner := NewRunner(settings)
+	runner.Stdout = &stdout
+	runner.Stderr = &stderr
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := runner.RunTextMode(ctx, "10", 1)
+	if err == nil {
+		t.Error("Expected error for cancelled context")
+	}
+}
+
+func TestBuildArgs_ClaudeTextMode(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "claude",
+			Flags:   []string{"--model", "opus"},
+		},
+		StreamAgentOutput: true, // Would normally add stream flags
+	}
+	r := NewRunner(settings)
+
+	args, promptFile := r.buildArgs("test prompt", 1, RunOptions{TextMode: true})
+
+	// Should have -p flag for claude
+	if len(args) < 1 || args[0] != "-p" {
+		t.Errorf("Expected first arg to be -p, got %v", args)
+	}
+
+	// Should have --output-format text for text mode
+	foundOutputFormat := false
+	for i, arg := range args {
+		if arg == "--output-format" && i+1 < len(args) && args[i+1] == "text" {
+			foundOutputFormat = true
+			break
+		}
+	}
+	if !foundOutputFormat {
+		t.Errorf("Expected --output-format text in args, got %v", args)
+	}
+
+	// Should NOT have stream output flags
+	for _, arg := range args {
+		if arg == "--output-format" {
+			// Check that it's followed by "text", not "stream-json"
+			continue
+		}
+		if arg == "stream-json" {
+			t.Errorf("Should not have stream-json in text mode, got %v", args)
+		}
+	}
+
+	// Should include user flags
+	foundModel := false
+	for i, arg := range args {
+		if arg == "--model" && i+1 < len(args) && args[i+1] == "opus" {
+			foundModel = true
+			break
+		}
+	}
+	if !foundModel {
+		t.Errorf("Expected user flags, got %v", args)
+	}
+
+	// No prompt file for claude
+	if promptFile != "" {
+		t.Errorf("Expected no prompt file for claude, got %q", promptFile)
+	}
+}
+
+func TestBuildArgs_NonClaudeTextMode(t *testing.T) {
+	// Text mode should only affect claude, not other agents
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "custom-agent",
+		},
+	}
+	r := NewRunner(settings)
+
+	args, _ := r.buildArgs("test prompt", 1, RunOptions{TextMode: true})
+
+	// Should NOT have --output-format for non-claude agents
+	for _, arg := range args {
+		if arg == "--output-format" {
+			t.Errorf("Should not have --output-format for non-claude agent, got %v", args)
+		}
+	}
+}
+
+func TestBuildCmd_Basic(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+			Flags:   []string{"-n"},
+		},
+	}
+
+	var stderr bytes.Buffer
+	r := NewRunner(settings)
+	r.Stderr = &stderr
+
+	cmd, cleanup := r.buildCmd(context.Background(), "hello", 1, RunOptions{})
+	defer cleanup()
+
+	if cmd == nil {
+		t.Fatal("Expected non-nil command")
+	}
+	// Command should use shell
+	if cmd.Args[0] == "" {
+		t.Error("Expected shell to be set")
+	}
+	// Stdin should be nil (non-interactive)
+	if cmd.Stdin != nil {
+		t.Error("Expected stdin to be nil")
+	}
+	// Should log the command
+	if !bytes.Contains(stderr.Bytes(), []byte("[ralph] Agent command:")) {
+		t.Error("Expected command to be logged to stderr")
+	}
+}
+
+func TestBuildCmd_WithPromptFile(t *testing.T) {
+	// Create .ralph directory for prompt file
+	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .ralph directory: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(RalphDir) }()
+
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "codex",
+		},
+	}
+
+	var stderr bytes.Buffer
+	r := NewRunner(settings)
+	r.Stderr = &stderr
+
+	_, cleanup := r.buildCmd(context.Background(), "test prompt", 1, RunOptions{})
+
+	// Prompt file should exist before cleanup
+	promptFile := ".ralph/prompt_001.txt"
+	if _, err := os.Stat(promptFile); os.IsNotExist(err) {
+		t.Error("Expected prompt file to be created")
+	}
+
+	// After cleanup, prompt file should be removed
+	cleanup()
+	if _, err := os.Stat(promptFile); !os.IsNotExist(err) {
+		t.Error("Expected prompt file to be cleaned up")
+	}
+}
+
+func TestCreateStreamProcessor_Disabled(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "claude",
+		},
+		StreamAgentOutput: false, // Streaming disabled
+	}
+
+	var stdout bytes.Buffer
+	r := NewRunner(settings)
+	r.Stdout = &stdout
+
+	proc, logFile := r.createStreamProcessor()
+
+	if proc != nil {
+		t.Error("Expected nil processor when streaming disabled")
+	}
+	if logFile != nil {
+		t.Error("Expected nil log file when streaming disabled")
+	}
+}
+
+func TestCreateStreamProcessor_Enabled(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "claude",
+		},
+		StreamAgentOutput: true,
+	}
+
+	var stdout bytes.Buffer
+	r := NewRunner(settings)
+	r.Stdout = &stdout
+
+	// Create .ralph directory for log file
+	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .ralph directory: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(RalphDir) }()
+
+	proc, logFile := r.createStreamProcessor()
+
+	if proc == nil {
+		t.Error("Expected non-nil processor when streaming enabled")
+	}
+	if logFile == nil {
+		t.Error("Expected non-nil log file for claude")
+	}
+
+	// Cleanup
+	if proc != nil {
+		_ = proc.Close()
+	}
+	if logFile != nil {
+		_ = logFile.Close()
+	}
+}
+
+func TestCreateStreamProcessor_NonClaude(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "other-agent",
+		},
+		StreamAgentOutput: true,
+	}
+
+	var stdout bytes.Buffer
+	r := NewRunner(settings)
+	r.Stdout = &stdout
+
+	proc, logFile := r.createStreamProcessor()
+
+	// Processor returns nil for unknown agents (no structured output support)
+	if proc != nil {
+		t.Error("Expected nil processor for unknown agent without structured output support")
+		_ = proc.Close()
+	}
+	// No log file for non-claude agents
+	if logFile != nil {
+		t.Error("Expected nil log file for non-claude agent")
+	}
+}
+
+func TestConfigureOutput_StreamingWithProcessor(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "claude",
+		},
+		StreamAgentOutput: true,
+	}
+
+	var stdout, stderr bytes.Buffer
+	r := NewRunner(settings)
+	r.Stdout = &stdout
+	r.Stderr = &stderr
+
+	// Create .ralph directory for log file
+	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .ralph directory: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(RalphDir) }()
+
+	proc, logFile := r.createStreamProcessor()
+	defer func() {
+		if proc != nil {
+			_ = proc.Close()
+		}
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+	}()
+
+	cmd := &exec.Cmd{}
+	var outputBuf bytes.Buffer
+	r.configureOutput(cmd, &outputBuf, proc)
+
+	// Stdout and stderr should be configured
+	if cmd.Stdout == nil {
+		t.Error("Expected stdout to be configured")
+	}
+	if cmd.Stderr == nil {
+		t.Error("Expected stderr to be configured")
+	}
+}
+
+func TestConfigureOutput_StreamingNoProcessor(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "unknown-agent",
+		},
+		StreamAgentOutput: true,
+	}
+
+	var stdout, stderr bytes.Buffer
+	r := NewRunner(settings)
+	r.Stdout = &stdout
+	r.Stderr = &stderr
+
+	cmd := &exec.Cmd{}
+	var outputBuf bytes.Buffer
+	r.configureOutput(cmd, &outputBuf, nil) // No processor
+
+	// Stdout and stderr should be configured for raw streaming
+	if cmd.Stdout == nil {
+		t.Error("Expected stdout to be configured")
+	}
+	if cmd.Stderr == nil {
+		t.Error("Expected stderr to be configured")
+	}
+}
+
+func TestConfigureOutput_NoStreaming(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "echo",
+		},
+		StreamAgentOutput: false,
+	}
+
+	r := NewRunner(settings)
+
+	cmd := &exec.Cmd{}
+	var outputBuf bytes.Buffer
+	r.configureOutput(cmd, &outputBuf, nil)
+
+	// Stdout should capture only (not stream)
+	if cmd.Stdout == nil {
+		t.Error("Expected stdout to be configured")
+	}
+	if cmd.Stderr == nil {
+		t.Error("Expected stderr to be configured")
 	}
 }

@@ -23,6 +23,11 @@ const (
 	RalphDir = ".ralph"
 )
 
+// RunOptions configures agent execution behavior.
+type RunOptions struct {
+	TextMode bool // Use text output format (no JSON streaming)
+}
+
 // Runner executes agent commands.
 type Runner struct {
 	Settings *config.Settings
@@ -43,68 +48,13 @@ func NewRunner(settings *config.Settings) *Runner {
 // Run executes the agent with the given prompt and returns the combined output.
 // The iteration parameter is used for naming prompt files (for Codex).
 func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string, error) {
-	args, promptFile := r.buildArgs(prompt, iteration)
-	if promptFile != "" {
-		defer func() {
-			_ = os.Remove(promptFile)
-		}()
-	}
-
-	// Build the full command string for shell execution with proper quoting
-	cmdParts := []string{shellQuote(r.Settings.Agent.Command)}
-	for _, arg := range args {
-		cmdParts = append(cmdParts, shellQuote(arg))
-	}
-	cmdStr := strings.Join(cmdParts, " ")
-
-	// Always log the full command being executed
-	_, _ = fmt.Fprintf(r.Stderr, "[ralph] Agent command: %s\n", cmdStr)
-
-	// Use user's shell with -ic to support aliases and functions
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "sh"
-	}
-
-	cmd := exec.CommandContext(ctx, shell, "-ic", cmdStr)
+	cmd, cleanup := r.buildCmd(ctx, prompt, iteration, RunOptions{})
+	defer cleanup()
 
 	var outputBuf bytes.Buffer
 
 	// Create stream processor if agent supports structured output
-	var proc *stream.Processor
-	var rawLogFile *os.File
-	if r.Settings.StreamAgentOutput {
-		agentName := strings.ToLower(strings.TrimSuffix(filepath.Base(r.Settings.Agent.Command), ".exe"))
-		var rawLog io.Writer
-		if agentName == "claude" {
-			if err := os.MkdirAll(RalphDir, 0o755); err != nil {
-				if r.Verbose {
-					_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to create %s: %v\n", RalphDir, err)
-				}
-			} else {
-				logPath := filepath.Join(RalphDir, "stream-json.log")
-				file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-				if err != nil {
-					if r.Verbose {
-						_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to open stream log %s: %v\n", logPath, err)
-					}
-				} else {
-					rawLogFile = file
-					rawLog = file
-				}
-			}
-		}
-
-		config := stream.DefaultFormatterConfig(filepath.Base(r.Settings.Agent.Command))
-		formatter := stream.NewFormatter(r.Stdout, config)
-
-		var debugLog *log.Logger
-		if r.Verbose {
-			debugLog = log.New(r.Stderr, "[stream-debug] ", log.LstdFlags)
-		}
-
-		proc = stream.NewProcessor(r.Settings.Agent.Command, formatter, debugLog, rawLog)
-	}
+	proc, rawLogFile := r.createStreamProcessor()
 	if proc != nil {
 		if rawLogFile != nil {
 			defer func() { _ = rawLogFile.Close() }()
@@ -133,28 +83,11 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 		if r.Verbose {
 			_, _ = fmt.Fprintf(r.Stderr, "[ralph] PTY start failed, falling back to pipe streaming: %v\n", err)
 		}
-		cmd = exec.CommandContext(ctx, shell, "-ic", cmdStr)
+		// Recreate command for fallback (PTY consumed the original)
+		cmd, _ = r.buildCmd(ctx, prompt, iteration, RunOptions{})
 	}
 
-	if r.Settings.StreamAgentOutput {
-		if proc != nil {
-			// Structured output: parse JSON, format events
-			cmd.Stdout = io.MultiWriter(&outputBuf, proc)
-			// Still stream stderr to user for prompts/errors
-			cmd.Stderr = io.MultiWriter(&outputBuf, r.Stderr)
-		} else {
-			// No parser available: raw streaming fallback
-			cmd.Stdout = io.MultiWriter(&outputBuf, r.Stdout)
-			cmd.Stderr = io.MultiWriter(&outputBuf, r.Stderr)
-		}
-	} else {
-		// Capture output only
-		cmd.Stdout = &outputBuf
-		cmd.Stderr = &outputBuf
-	}
-
-	// Set stdin to /dev/null to prevent hanging
-	cmd.Stdin = nil
+	r.configureOutput(cmd, &outputBuf, proc)
 
 	err := cmd.Run()
 
@@ -165,6 +98,67 @@ func (r *Runner) Run(ctx context.Context, prompt string, iteration int) (string,
 	}
 
 	return outputBuf.String(), err
+}
+
+// createStreamProcessor creates a stream processor if streaming is enabled.
+// Returns the processor and raw log file (both may be nil).
+func (r *Runner) createStreamProcessor() (*stream.Processor, *os.File) {
+	if !r.Settings.StreamAgentOutput {
+		return nil, nil
+	}
+
+	agentName := strings.ToLower(strings.TrimSuffix(filepath.Base(r.Settings.Agent.Command), ".exe"))
+	var rawLog io.Writer
+	var rawLogFile *os.File
+
+	if agentName == "claude" {
+		if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+			if r.Verbose {
+				_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to create %s: %v\n", RalphDir, err)
+			}
+		} else {
+			logPath := filepath.Join(RalphDir, "stream-json.log")
+			file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+			if err != nil {
+				if r.Verbose {
+					_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to open stream log %s: %v\n", logPath, err)
+				}
+			} else {
+				rawLogFile = file
+				rawLog = file
+			}
+		}
+	}
+
+	config := stream.DefaultFormatterConfig(filepath.Base(r.Settings.Agent.Command))
+	formatter := stream.NewFormatter(r.Stdout, config)
+
+	var debugLog *log.Logger
+	if r.Verbose {
+		debugLog = log.New(r.Stderr, "[stream-debug] ", log.LstdFlags)
+	}
+
+	return stream.NewProcessor(r.Settings.Agent.Command, formatter, debugLog, rawLog), rawLogFile
+}
+
+// configureOutput sets up stdout/stderr for the command based on streaming settings.
+func (r *Runner) configureOutput(cmd *exec.Cmd, outputBuf *bytes.Buffer, proc *stream.Processor) {
+	if r.Settings.StreamAgentOutput {
+		if proc != nil {
+			// Structured output: parse JSON, format events
+			cmd.Stdout = io.MultiWriter(outputBuf, proc)
+			// Still stream stderr to user for prompts/errors
+			cmd.Stderr = io.MultiWriter(outputBuf, r.Stderr)
+		} else {
+			// No parser available: raw streaming fallback
+			cmd.Stdout = io.MultiWriter(outputBuf, r.Stdout)
+			cmd.Stderr = io.MultiWriter(outputBuf, r.Stderr)
+		}
+	} else {
+		// Capture output only
+		cmd.Stdout = outputBuf
+		cmd.Stderr = outputBuf
+	}
 }
 
 type flushWriter interface {
@@ -221,9 +215,42 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
 
+// buildCmd creates an exec.Cmd with proper shell wrapping and logging.
+// Returns the command and a cleanup function for any temp files.
+func (r *Runner) buildCmd(ctx context.Context, prompt string, iteration int, opts RunOptions) (*exec.Cmd, func()) {
+	args, promptFile := r.buildArgs(prompt, iteration, opts)
+
+	cleanup := func() {
+		if promptFile != "" {
+			_ = os.Remove(promptFile)
+		}
+	}
+
+	// Build the full command string for shell execution with proper quoting
+	cmdParts := []string{shellQuote(r.Settings.Agent.Command)}
+	for _, arg := range args {
+		cmdParts = append(cmdParts, shellQuote(arg))
+	}
+	cmdStr := strings.Join(cmdParts, " ")
+
+	// Always log the full command being executed
+	_, _ = fmt.Fprintf(r.Stderr, "[ralph] Agent command: %s\n", cmdStr)
+
+	// Use user's shell with -ic to support aliases and functions
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "sh"
+	}
+
+	cmd := exec.CommandContext(ctx, shell, "-ic", cmdStr)
+	cmd.Stdin = nil
+
+	return cmd, cleanup
+}
+
 // buildArgs constructs the argument list for the agent command.
 // Returns the args and the path to any prompt file created (empty if none).
-func (r *Runner) buildArgs(prompt string, iteration int) ([]string, string) {
+func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]string, string) {
 	var args []string
 	var promptFile string
 
@@ -240,8 +267,14 @@ func (r *Runner) buildArgs(prompt string, iteration int) ([]string, string) {
 		args = append(args, "-x")
 	}
 
-	// Add structured output flags if streaming is enabled
-	if r.Settings.StreamAgentOutput {
+	// Add output format flags
+	if opts.TextMode {
+		// Text mode: simple text output (for commit messages, etc.)
+		if strings.ToLower(cmdName) == "claude" {
+			args = append(args, "--output-format", "text")
+		}
+	} else if r.Settings.StreamAgentOutput {
+		// Streaming mode: structured JSON output
 		if flags := stream.OutputFlags(r.Settings.Agent.Command); flags != nil {
 			args = append(args, flags...)
 		}
@@ -266,6 +299,20 @@ func (r *Runner) buildArgs(prompt string, iteration int) ([]string, string) {
 	}
 
 	return args, promptFile
+}
+
+// RunTextMode executes the agent with text output format (no JSON streaming).
+// Used for simple requests like commit messages where we just need the text response.
+func (r *Runner) RunTextMode(ctx context.Context, prompt string, iteration int) (string, error) {
+	cmd, cleanup := r.buildCmd(ctx, prompt, iteration, RunOptions{TextMode: true})
+	defer cleanup()
+
+	var outputBuf bytes.Buffer
+	cmd.Stdout = &outputBuf
+	cmd.Stderr = &outputBuf
+
+	err := cmd.Run()
+	return outputBuf.String(), err
 }
 
 // RunShell executes a shell command and returns combined output.

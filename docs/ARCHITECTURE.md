@@ -39,8 +39,9 @@ Settings are loaded in this order:
 `agent.command` is required; validation fails otherwise.
 
 ## Prompt Construction
-- `--prompt` uses the inline value.
-- `--prompt-file` is re-read every iteration to allow live edits.
+- Positional argument or `--prompt`/`-p` uses the inline value.
+- `--prompt-file`/`-f` is re-read every iteration to allow live edits.
+- Exactly one prompt source required (positional, `--prompt`, or `--prompt-file`).
 - Guardrail failures feed into the next prompt using `APPEND`, `PREPEND`, or
   `REPLACE`, with a two-newline separator.
 
@@ -69,8 +70,8 @@ contents to `completionResponse` (case-insensitive).
 
 ## SCM Tasks
 If configured, SCM tasks run after guardrails pass. Supported tasks:
-- `commit`: prompt the agent for a short imperative commit message and run
-  `git commit -am "<message>"`.
+- `commit`: prompt the agent (using text output mode) for a short imperative
+  commit message and run `git commit -am "<message>"`.
 - `push`: run `git push`.
 - Any other task is run as `<scm.command> <task>`.
 

@@ -73,8 +73,8 @@ func (r *Runner) runTask(ctx context.Context, task string, iteration int) error 
 func (r *Runner) runCommit(ctx context.Context, iteration int) error {
 	r.log("Getting commit message from agent")
 
-	// Get commit message from agent
-	output, err := r.AgentRunner.Run(ctx, commitMessagePrompt, iteration)
+	// Get commit message from agent using text mode (no JSON streaming)
+	output, err := r.AgentRunner.RunTextMode(ctx, commitMessagePrompt, iteration)
 	if err != nil {
 		return fmt.Errorf("failed to get commit message: %w", err)
 	}
