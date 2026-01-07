@@ -24,6 +24,8 @@ go test -v ./internal/config -run TestLoadWithLocal
 
 ## Architecture
 
+Review @docs/ARCHITECTURE.md for detailed write up.
+
 Entry point: `cmd/ralph/main.go` - CLI parsing (kong), signal handling, orchestrates loop + SCM
 
 Internal packages:

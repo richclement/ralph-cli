@@ -44,6 +44,9 @@ ralph-cli/
 │   ├── config/
 │   │   ├── config.go         # Settings structs, loading, merging
 │   │   └── config_test.go
+│   ├── initcmd/
+│   │   ├── initcmd.go        # Interactive init command
+│   │   └── initcmd_test.go
 │   ├── agent/
 │   │   ├── agent.go          # Agent invocation, output streaming
 │   │   └── agent_test.go
@@ -71,21 +74,33 @@ ralph-cli/
 
 ## CLI
 
-Using kong for argument parsing:
+Using kong for argument parsing with subcommands:
 
 ```go
 type CLI struct {
-    Prompt             string           `arg:"" optional:"" help:"Prompt string to send to agent."`
-    PromptFlag         string           `name:"prompt" short:"p" help:"Prompt string to send to agent."`
-    PromptFile         string           `name:"prompt-file" short:"f" help:"Path to file containing prompt text."`
-    MaximumIterations  int              `name:"maximum-iterations" short:"m" help:"Maximum iterations before stopping."`
-    CompletionResponse string           `name:"completion-response" short:"c" help:"Completion response text."`
-    Settings           string           `name:"settings" default:".ralph/settings.json" help:"Path to settings file."`
-    StreamAgentOutput  *bool            `name:"stream-agent-output" help:"Stream agent output to console." negatable:""`
-    Verbose            bool             `name:"verbose" short:"V" help:"Enable verbose/debug output."`
-    Version            kong.VersionFlag `name:"version" short:"v" help:"Print version and exit."`
+    Init    InitCmd          `cmd:"" help:"Initialize settings file interactively."`
+    Run     RunCmd           `cmd:"" default:"1" help:"Run the agent loop."`
+    Version kong.VersionFlag `name:"version" short:"v" help:"Print version and exit."`
+}
+
+type InitCmd struct{}
+
+type RunCmd struct {
+    Prompt             string `name:"prompt" short:"p" help:"Prompt string to send to agent."`
+    PromptFile         string `name:"prompt-file" short:"f" help:"Path to file containing prompt text."`
+    MaximumIterations  int    `name:"maximum-iterations" short:"m" help:"Maximum iterations before stopping."`
+    CompletionResponse string `name:"completion-response" short:"c" help:"Completion response text."`
+    StreamAgentOutput  *bool  `name:"stream-agent-output" help:"Stream agent output to console." negatable:""`
+    Verbose            bool   `name:"verbose" short:"V" help:"Enable verbose/debug output."`
 }
 ```
+
+**Subcommands:**
+- `ralph init` - Initialize settings file interactively (see Init Command section)
+- `ralph run` - Run the agent loop (default command)
+- `ralph --version` / `ralph -v` - Print version and exit
+
+The `run` command is marked as default (`default:"1"`), so `ralph -p "prompt"` works without explicitly typing `run`.
 
 **Version Handling:**
 Kong provides built-in version support. Set version at build time via `-ldflags`:
@@ -103,19 +118,81 @@ func main() {
 }
 ```
 
-**Flags:**
-- Positional arg: prompt string
-- `--prompt`, `-p`: prompt string (flag alternative to positional)
-- `--prompt-file`, `-f`: path to file contents used as prompt (mutually exclusive with other prompt sources)
+**Run Command Flags:**
+- `--prompt`, `-p`: prompt string
+- `--prompt-file`, `-f`: path to file contents used as prompt (mutually exclusive with `--prompt`)
 - `--maximum-iterations`, `-m`: integer
 - `--completion-response`, `-c`: string (default `DONE`)
-- `--settings`: path (default `./.ralph/settings.json`)
 - `--stream-agent-output` / `--no-stream-agent-output`: boolean (default `true`)
 - `--verbose`, `-V`: enable verbose/debug output
-- `--version`, `-v`: print version and exit
+
+**Settings Path:**
+The settings file path is hardcoded to `.ralph/settings.json` (not configurable via CLI).
 
 **Validation:**
-- Exactly one of positional prompt, `--prompt`, or `--prompt-file` must be provided.
+- For the `run` command, exactly one of `--prompt` or `--prompt-file` must be provided (mutually exclusive).
+
+---
+
+## Init Command
+
+The `ralph init` command interactively creates `.ralph/settings.json` by walking the user through required and optional settings.
+
+**Requirements:**
+- Interactive-only (requires TTY); exits with error if stdin is not a terminal
+- Signal handling: Ctrl+C aborts gracefully without writing partial file (exit code 130)
+
+**Behavior when settings exist:**
+1. Load effective config by merging `.ralph/settings.json` with `.ralph/settings.local.json` (if present)
+2. Pretty-print merged config to stdout using `json.MarshalIndent`
+3. Display which files were loaded:
+   - `"Loaded from .ralph/settings.json"` or
+   - `"Loaded from .ralph/settings.json (with local overlay from settings.local.json)"`
+4. Prompt for overwrite: `"Overwrite? (y/N): "` (default No)
+5. If declined, exit with code 0
+
+**Prompts:**
+- `agent.command` (required, re-prompt if blank)
+- `agent.flags` (optional, comma-separated, whitespace trimmed)
+- `maximumIterations` (default `10` when blank, validates positive integer)
+- `completionResponse` (default `DONE` when blank)
+- Guardrails loop (0+):
+  - `command` (empty input exits loop)
+  - `failAction` (APPEND|PREPEND|REPLACE, case-normalized to uppercase)
+- SCM setup (optional):
+  - Prompt `"Configure SCM? (y/N):"` first
+  - If yes: `scm.command`, `scm.tasks` (comma-separated)
+
+**Defaults applied:**
+- `outputTruncateChars`: `5000`
+- `streamAgentOutput`: `true`
+
+**Exit Codes:**
+| Code | Meaning |
+|------|---------|
+| 0 | Success or declined overwrite |
+| 2 | Validation error, non-TTY, or write failure |
+| 130 | Interrupted by signal (Ctrl+C) or EOF |
+
+**Example Flow:**
+```
+$ ralph init
+
+Agent command (e.g., claude, codex, amp, or other LLM CLI): claude
+Agent flags (comma-separated, optional): --model,opus
+Maximum iterations [10]:
+Completion response [DONE]:
+Add guardrail command (leave blank to finish): make lint
+  Fail action (APPEND|PREPEND|REPLACE): APPEND
+Add guardrail command (leave blank to finish): make test
+  Fail action (APPEND|PREPEND|REPLACE): APPEND
+Add guardrail command (leave blank to finish):
+Configure SCM? (y/N): y
+  SCM command (e.g., git): git
+  SCM tasks (comma-separated, e.g., commit,push): commit
+
+Settings written to .ralph/settings.json
+```
 
 ---
 

@@ -14,8 +14,11 @@ and optionally executes SCM tasks (commit/push) after guardrails pass.
 5. Check completion response; stop when matched or exit after max iterations.
 
 ## Key Packages
-- `cmd/ralph/main.go` sets up CLI flags, config loading, signal handling, and
-  kicks off the loop.
+- `cmd/ralph/main.go` sets up CLI subcommands (`init` and `run`), signal
+  handling, and routes to the appropriate handler.
+- `internal/initcmd` implements the interactive `ralph init` command which
+  walks users through creating `.ralph/settings.json` with prompts for
+  agent command, flags, guardrails, and SCM configuration.
 - `internal/config` loads `.ralph/settings.json`, merges
   `.ralph/settings.local.json`, applies CLI overrides, and validates settings.
 - `internal/agent` executes the agent command, supports streaming output, and

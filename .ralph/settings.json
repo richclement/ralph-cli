@@ -1,10 +1,16 @@
 {
-  "maximumIterations": 10,
+  "maximumIterations": 20,
   "completionResponse": "DONE",
-  "outputTruncateChars": 50000,
+  "outputTruncateChars": 5000,
+  "streamAgentOutput": true,
   "agent": {
-    "command": "codex",
-    "flags": ["--sandbox workspace-write"]
+    "command": "claude",
+    "flags": [
+      "--model",
+      "claude-opus-4-5",
+      "--permission-mode",
+      "acceptEdits"
+    ]
   },
   "guardrails": [
     {

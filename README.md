@@ -37,6 +37,39 @@ make install
 
 ## Usage
 
+### Interactive Setup
+
+The easiest way to get started is with the interactive `init` command:
+
+```bash
+ralph init
+```
+
+This walks you through setting up your configuration interactively:
+
+```
+$ ralph init
+
+Agent command (e.g., claude, codex, amp, or other LLM CLI): claude
+Agent flags (comma-separated, optional): --model,opus
+Maximum iterations [10]:
+Completion response [DONE]:
+Add guardrail command (leave blank to finish): make lint
+  Fail action (APPEND|PREPEND|REPLACE): APPEND
+Add guardrail command (leave blank to finish): make test
+  Fail action (APPEND|PREPEND|REPLACE): APPEND
+Add guardrail command (leave blank to finish):
+Configure SCM? (y/N): y
+  SCM command (e.g., git): git
+  SCM tasks (comma-separated, e.g., commit,push): commit
+
+Settings written to .ralph/settings.json
+```
+
+If a settings file already exists, it will show the current configuration and ask whether to overwrite.
+
+### Running the Agent
+
 ```bash
 # Run with inline prompt
 ralph "Fix the failing tests"
@@ -45,7 +78,7 @@ ralph "Fix the failing tests"
 ralph -f prompt.txt
 
 # With options
-ralph "Implement the feature. Responde with <response>COMPLETE</response> when done." -m 5 -c "<response>COMPLETE</response>" -V
+ralph "Implement the feature. Respond with <response>COMPLETE</response> when done." -m 5 -c "<response>COMPLETE</response>" -V
 ```
 
 ### CLI Flags
@@ -57,7 +90,6 @@ ralph "Implement the feature. Responde with <response>COMPLETE</response> when d
 | `--prompt-file` | `-f` | Path to file containing prompt text |
 | `--maximum-iterations` | `-m` | Maximum iterations before stopping |
 | `--completion-response` | `-c` | Completion response text (default: `DONE`) |
-| `--settings` | | Path to settings file (default: `.ralph/settings.json`) |
 | `--stream-agent-output` | | Stream agent output to console (default: true) |
 | `--no-stream-agent-output` | | Disable streaming agent output |
 | `--verbose` | `-V` | Enable verbose/debug output |
@@ -125,22 +157,14 @@ Ralph looks for `<response>message</response>` tags in agent output:
 
 The match is case-insensitive. Completion is only checked when all guardrails pass.
 
-## Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success (completion response matched) |
-| 1 | Max iterations reached without completion |
-| 2 | Configuration/validation error |
-| 130 | Interrupted by signal (SIGINT/SIGTERM) |
-
 ## Architecture
 
 ```
 ralph-cli/
-├── cmd/ralph/          # Entry point, CLI setup
+├── cmd/ralph/          # Entry point, CLI setup with subcommands
 ├── internal/
 │   ├── config/         # Settings loading and merging
+│   ├── initcmd/        # Interactive init command
 │   ├── agent/          # Agent command execution
 │   ├── guardrail/      # Guardrail execution and logging
 │   ├── loop/           # Main loop orchestration
