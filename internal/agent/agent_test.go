@@ -918,12 +918,6 @@ func TestBuildArgs_CodexStreamingMode(t *testing.T) {
 }
 
 func TestBuildArgs_CodexTextMode(t *testing.T) {
-	// Create .ralph directory for prompt file
-	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .ralph directory: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(RalphDir) }()
-
 	settings := &config.Settings{
 		Agent: config.AgentConfig{
 			Command: "codex",
@@ -971,19 +965,19 @@ func TestBuildArgs_CodexTextMode(t *testing.T) {
 		t.Errorf("Expected -o %s in args, got %v", outputFile, args)
 	}
 
-	// Should have prompt file
-	if promptFile == "" {
-		t.Error("Expected prompt file for codex")
+	// In text mode, prompt should be passed directly (not via file)
+	// to avoid issues with codex's -o flag behavior
+	if promptFile != "" {
+		t.Errorf("Expected no prompt file in text mode, got %s", promptFile)
+	}
+
+	// Last arg should be the prompt itself
+	if len(args) == 0 || args[len(args)-1] != "test prompt" {
+		t.Errorf("Expected last arg to be prompt, got %v", args)
 	}
 }
 
 func TestBuildArgs_CodexTextModeNoOutputFile(t *testing.T) {
-	// Create .ralph directory for prompt file
-	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .ralph directory: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(RalphDir) }()
-
 	settings := &config.Settings{
 		Agent: config.AgentConfig{
 			Command: "codex",
@@ -992,13 +986,18 @@ func TestBuildArgs_CodexTextModeNoOutputFile(t *testing.T) {
 	r := NewRunner(settings)
 
 	// Text mode without output file - should not add -o flag
-	args, _ := r.buildArgs("test prompt", 1, RunOptions{TextMode: true})
+	args, promptFile := r.buildArgs("test prompt", 1, RunOptions{TextMode: true})
 
 	// Should NOT have -o flag when output file is empty
 	for _, arg := range args {
 		if arg == "-o" {
 			t.Errorf("Should not have -o flag when no output file specified, got %v", args)
 		}
+	}
+
+	// Text mode should not use prompt file
+	if promptFile != "" {
+		t.Errorf("Expected no prompt file in text mode, got %s", promptFile)
 	}
 }
 

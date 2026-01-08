@@ -320,8 +320,9 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 	// Add user-configured flags
 	args = append(args, r.Settings.Agent.Flags...)
 
-	// For Codex with "e" subcommand, write prompt to file (matching Python behavior)
-	if cmdLower == stream.AgentCodex && len(args) > 0 && args[0] == "e" {
+	// For Codex with "e" subcommand in streaming mode, write prompt to file.
+	// In text mode (commit messages), pass prompt directly to avoid -o flag issues.
+	if cmdLower == stream.AgentCodex && len(args) > 0 && args[0] == "e" && !opts.TextMode {
 		promptFile = filepath.Join(RalphDir, fmt.Sprintf("prompt_%03d.txt", iteration))
 		if err := os.WriteFile(promptFile, []byte(prompt), 0o644); err == nil {
 			args = append(args, promptFile)
@@ -331,7 +332,7 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 			promptFile = ""
 		}
 	} else {
-		// Add the prompt as argument for other agents
+		// Add the prompt as argument for other agents (and Codex text mode)
 		args = append(args, prompt)
 	}
 
