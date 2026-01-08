@@ -95,10 +95,19 @@ Codex has special handling:
 - `-o` writes response to file, which is read and cleaned up after execution
 
 ## Guardrails
-Guardrails run after each agent response. Results include:
+Guardrails run after each agent response. Each guardrail has:
+- `command`: shell command to run
+- `failAction`: `APPEND`, `PREPEND`, or `REPLACE`
+- `hint` (optional): guidance text injected into the prompt on failure
+
+Results include:
 - Full output saved to `.ralph/guardrail_<iter>_<slug>.log`.
 - A truncated output snippet (default 5000 chars) used in prompt feedback.
 - Exit codes and fail actions for logging and prompt updates.
+
+On failure, the message sent to the agent includes the command, exit code, log
+file path, optional hint (if configured), and truncated output. Hints are literal
+strings and are never truncated.
 
 Slugs replace non-alphanumeric characters with `_`, trim edges, and truncate to
 50 chars; duplicate slugs get numeric suffixes.

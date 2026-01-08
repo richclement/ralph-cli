@@ -298,9 +298,16 @@ func promptGuardrails(reader *bufio.Reader) ([]config.Guardrail, error) {
 			break
 		}
 
+		// Prompt for optional hint
+		hint, err := prompt(reader, "  Hint (optional, guidance for agent on failure): ")
+		if err != nil {
+			return nil, err
+		}
+
 		guardrails = append(guardrails, config.Guardrail{
 			Command:    cmd,
 			FailAction: failAction,
+			Hint:       hint,
 		})
 	}
 	return guardrails, nil

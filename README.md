@@ -56,8 +56,10 @@ Maximum iterations [10]:
 Completion response [DONE]:
 Add guardrail command (leave blank to finish): make lint
   Fail action (APPEND|PREPEND|REPLACE): APPEND
+  Hint (optional, guidance for agent on failure): Fix lint errors only. Do not change behavior.
 Add guardrail command (leave blank to finish): make test
   Fail action (APPEND|PREPEND|REPLACE): APPEND
+  Hint (optional, guidance for agent on failure):
 Add guardrail command (leave blank to finish):
 Configure SCM? (y/N): y
   SCM command (e.g., git): git
@@ -136,7 +138,12 @@ Ralph supports the following CLI LLM agents with automatic flag detection:
   },
   "guardrails": [
     {
-      "command": "./mvnw clean install -T 2C -q -e",
+      "command": "make lint",
+      "failAction": "APPEND",
+      "hint": "Fix lint errors only. Do not change behavior."
+    },
+    {
+      "command": "make test",
       "failAction": "APPEND"
     }
   ],
@@ -162,11 +169,31 @@ Ralph supports the following CLI LLM agents with automatic flag detection:
 | `scm.command` | | SCM command (e.g., `git`) |
 | `scm.tasks` | `[]` | SCM tasks to run (e.g., `["commit", "push"]`) |
 
-### Guardrail Fail Actions
+### Guardrail Configuration
 
+Each guardrail has:
+- `command` - Shell command to run
+- `failAction` - One of `APPEND`, `PREPEND`, or `REPLACE`
+- `hint` (optional) - Guidance text injected into the prompt when the guardrail fails
+
+**Fail Actions:**
 - `APPEND` - Append failed output to the prompt
 - `PREPEND` - Prepend failed output to the prompt
 - `REPLACE` - Replace the prompt with failed output
+
+**Hints:**
+
+When a guardrail fails and has a `hint` configured, the hint is included in the failure message sent to the agent:
+
+```
+Guardrail "make lint" failed with exit code 1.
+Hint: Fix lint errors only. Do not change behavior.
+Output file: .ralph/guardrail_001_make_lint.log
+Output (truncated):
+<output...>
+```
+
+Hints are literal strings (no templating) and are never truncated.
 
 ## Completion Detection
 
