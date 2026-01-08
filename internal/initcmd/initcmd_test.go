@@ -89,12 +89,13 @@ func TestRun_HappyPath(t *testing.T) {
 		defer mockTTY(true)()
 
 		// Input: agent command, flags, max iterations (default), completion (default),
-		// one guardrail, exit guardrail loop, decline SCM
+		// iteration count (default), one guardrail, exit guardrail loop, decline SCM
 		input := strings.Join([]string{
 			"claude",       // agent command
 			"--model,opus", // agent flags (comma-separated)
 			"",             // max iterations (use default 10)
 			"",             // completion response (use default DONE)
+			"",             // include iteration count (default false)
 			"make lint",    // guardrail command
 			"APPEND",       // fail action
 			"",             // exit guardrail loop
@@ -138,6 +139,9 @@ func TestRun_HappyPath(t *testing.T) {
 		if !settings.StreamAgentOutput {
 			t.Error("streamAgentOutput should be true by default")
 		}
+		if settings.IncludeIterationCountInPrompt {
+			t.Error("includeIterationCountInPrompt should be false by default")
+		}
 		if len(settings.Guardrails) != 1 {
 			t.Errorf("guardrails length = %d, want 1", len(settings.Guardrails))
 		} else {
@@ -165,6 +169,7 @@ func TestRun_WithSCM(t *testing.T) {
 			"",       // no flags
 			"",       // default max iterations
 			"",       // default completion
+			"",       // default include iteration count
 			"",       // no guardrails
 			"y",      // configure SCM
 			"git",    // SCM command
@@ -286,6 +291,7 @@ func TestRun_ExistingSettings_AcceptOverwrite(t *testing.T) {
 			"",          // no flags
 			"",          // default iterations
 			"",          // default completion
+			"",          // default include iteration count
 			"",          // no guardrails
 			"N",         // no SCM
 		}, "\n") + "\n"
@@ -415,6 +421,7 @@ func TestRun_MalformedExistingSettings(t *testing.T) {
 			"",          // no flags
 			"",          // default iterations
 			"",          // default completion
+			"",          // default include iteration count
 			"",          // no guardrails
 			"N",         // no SCM
 		}, "\n") + "\n"
@@ -471,6 +478,7 @@ func TestRun_EmptyAgentCommand_Reprompt(t *testing.T) {
 			"",       // no flags
 			"",       // default iterations
 			"",       // default completion
+			"",       // default include iteration count
 			"",       // no guardrails
 			"N",      // no SCM
 		}, "\n") + "\n"
@@ -525,6 +533,7 @@ func TestRun_InvalidFailAction_Reprompt(t *testing.T) {
 			"",          // no flags
 			"",          // default iterations
 			"",          // default completion
+			"",          // default include iteration count
 			"make lint", // guardrail command
 			"INVALID",   // invalid action - should reprompt
 			"APPEND",    // valid action
@@ -580,6 +589,7 @@ func TestRun_FailActionCaseNormalization(t *testing.T) {
 			"",          // no flags
 			"",          // default iterations
 			"",          // default completion
+			"",          // default include iteration count
 			"make lint", // guardrail command
 			"append",    // lowercase - should be normalized
 			"",          // exit guardrail loop
@@ -620,6 +630,7 @@ func TestRun_GuardrailLoopExit(t *testing.T) {
 			"",          // no flags
 			"",          // default iterations
 			"",          // default completion
+			"",          // default include iteration count
 			"make lint", // first guardrail
 			"APPEND",
 			"make test", // second guardrail
@@ -662,6 +673,7 @@ func TestRun_SCMDeclined(t *testing.T) {
 			"",       // no flags
 			"",       // default iterations
 			"",       // default completion
+			"",       // default include iteration count
 			"",       // no guardrails
 			"N",      // decline SCM
 		}, "\n") + "\n"
@@ -790,6 +802,7 @@ func TestRun_WhitespaceTrimming(t *testing.T) {
 			"  --model  ,  opus  ,  ", // flags with whitespace
 			"",                        // default iterations
 			"",                        // default completion
+			"",                        // default include iteration count
 			"",                        // no guardrails
 			"y",                       // configure SCM
 			"git",                     // SCM command
@@ -860,6 +873,7 @@ func TestRun_InvalidMaxIterations_Reprompt(t *testing.T) {
 			"0",      // invalid - must be > 0
 			"15",     // valid
 			"",       // default completion
+			"",       // default include iteration count
 			"",       // no guardrails
 			"N",      // no SCM
 		}, "\n") + "\n"
@@ -913,6 +927,7 @@ func TestRun_ZeroGuardrails(t *testing.T) {
 			"",       // no flags
 			"",       // default iterations
 			"",       // default completion
+			"",       // default include iteration count
 			"",       // immediately exit guardrails (no guardrails added)
 			"N",      // no SCM
 		}, "\n") + "\n"
@@ -951,6 +966,7 @@ func TestRun_CustomCompletionResponse(t *testing.T) {
 			"",         // no flags
 			"",         // default iterations
 			"FINISHED", // custom completion response
+			"",         // default include iteration count
 			"",         // no guardrails
 			"N",        // no SCM
 		}, "\n") + "\n"
@@ -974,6 +990,45 @@ func TestRun_CustomCompletionResponse(t *testing.T) {
 
 		if settings.CompletionResponse != "FINISHED" {
 			t.Errorf("completionResponse = %q, want %q", settings.CompletionResponse, "FINISHED")
+		}
+	})
+}
+
+func TestRun_IncludeIterationCountPrompt(t *testing.T) {
+	withTempDir(t, func(dir string) {
+		captureExit()
+		defer restoreExit()
+		defer mockTTY(true)()
+
+		input := strings.Join([]string{
+			"claude", // agent command
+			"",       // no flags
+			"",       // default iterations
+			"",       // default completion
+			"y",      // include iteration count
+			"",       // no guardrails
+			"N",      // no SCM
+		}, "\n") + "\n"
+
+		withStdin(t, input, func() {
+			err := Run()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+
+		data, err := os.ReadFile(".ralph/settings.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var settings config.Settings
+		if err := json.Unmarshal(data, &settings); err != nil {
+			t.Fatal(err)
+		}
+
+		if !settings.IncludeIterationCountInPrompt {
+			t.Errorf("includeIterationCountInPrompt = %v, want true", settings.IncludeIterationCountInPrompt)
 		}
 	})
 }

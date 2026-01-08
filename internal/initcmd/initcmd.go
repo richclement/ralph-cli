@@ -79,6 +79,11 @@ func Run() error {
 		return err
 	}
 
+	includeIterationCount, err := promptIncludeIterationCount(reader)
+	if err != nil {
+		return err
+	}
+
 	guardrails, err := promptGuardrails(reader)
 	if err != nil {
 		return err
@@ -95,6 +100,7 @@ func Run() error {
 	settings.Agent.Flags = agentFlags
 	settings.MaximumIterations = maxIterations
 	settings.CompletionResponse = completionResponse
+	settings.IncludeIterationCountInPrompt = includeIterationCount
 	settings.Guardrails = guardrails
 	if scm != nil {
 		settings.SCM = scm
@@ -240,6 +246,29 @@ func promptMaxIterations(reader *bufio.Reader) (int, error) {
 
 func promptCompletionResponse(reader *bufio.Reader) (string, error) {
 	return promptWithDefault(reader, "Completion response", "DONE")
+}
+
+func promptIncludeIterationCount(reader *bufio.Reader) (bool, error) {
+	defaultValue := strconv.FormatBool(config.NewDefaults().IncludeIterationCountInPrompt)
+	for {
+		input, err := promptWithDefault(reader, "Include iteration count in prompt", defaultValue)
+		if err != nil {
+			return false, err
+		}
+		normalized := strings.ToLower(strings.TrimSpace(input))
+		switch normalized {
+		case "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		}
+		parsed, parseErr := strconv.ParseBool(normalized)
+		if parseErr != nil {
+			fmt.Fprintln(os.Stderr, "Please enter true/false or y/n")
+			continue
+		}
+		return parsed, nil
+	}
 }
 
 func promptGuardrails(reader *bufio.Reader) ([]config.Guardrail, error) {
