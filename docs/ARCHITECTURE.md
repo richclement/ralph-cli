@@ -73,6 +73,9 @@ available. Output is always captured; if streaming is enabled:
 The `--dangerously-allow-all` flag for Amp enables autonomous tool execution
 without approval prompts, matching the autonomous workflow ralph provides.
 
+Note: Amp requires `-x <prompt>` to appear together at the end of the command,
+so ralph orders flags accordingly: `amp [flags...] -x <prompt>`.
+
 ## Guardrails
 Guardrails run after each agent response. Results include:
 - Full output saved to `.ralph/guardrail_<iter>_<slug>.log`.

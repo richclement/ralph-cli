@@ -101,13 +101,16 @@ func TestBuildArgs_Amp(t *testing.T) {
 
 	args, _ := r.buildArgs("test prompt", 1, RunOptions{})
 
-	// Should have -x flag for amp
-	if len(args) < 1 || args[0] != "-x" {
-		t.Errorf("Expected first arg to be -x, got %v", args)
+	// For amp, -x should immediately precede the prompt (at the end)
+	if len(args) < 2 {
+		t.Fatalf("Expected at least 2 args, got %v", args)
 	}
 
-	// Should include prompt
-	if len(args) < 2 || args[1] != "test prompt" {
+	// Last two args should be -x and prompt
+	if args[len(args)-2] != "-x" {
+		t.Errorf("Expected -x as second-to-last arg, got %v", args)
+	}
+	if args[len(args)-1] != "test prompt" {
 		t.Errorf("Expected prompt as last arg, got %v", args)
 	}
 }
@@ -738,9 +741,15 @@ func TestBuildArgs_AmpTextMode(t *testing.T) {
 
 	args, _ := r.buildArgs("test prompt", 1, RunOptions{TextMode: true})
 
-	// Should have -x flag for amp
-	if len(args) < 1 || args[0] != "-x" {
-		t.Errorf("Expected first arg to be -x, got %v", args)
+	// For amp, -x should be second-to-last, prompt last
+	if len(args) < 2 {
+		t.Fatalf("Expected at least 2 args, got %v", args)
+	}
+	if args[len(args)-2] != "-x" {
+		t.Errorf("Expected -x as second-to-last arg, got %v", args)
+	}
+	if args[len(args)-1] != "test prompt" {
+		t.Errorf("Expected prompt as last arg, got %v", args)
 	}
 
 	// Should have --dangerously-allow-all for text mode
@@ -774,9 +783,15 @@ func TestBuildArgs_AmpStreamMode(t *testing.T) {
 
 	args, _ := r.buildArgs("test prompt", 1, RunOptions{})
 
-	// Should have -x flag for amp
-	if len(args) < 1 || args[0] != "-x" {
-		t.Errorf("Expected first arg to be -x, got %v", args)
+	// For amp, -x should be second-to-last, prompt last
+	if len(args) < 2 {
+		t.Fatalf("Expected at least 2 args, got %v", args)
+	}
+	if args[len(args)-2] != "-x" {
+		t.Errorf("Expected -x as second-to-last arg, got %v", args)
+	}
+	if args[len(args)-1] != "test prompt" {
+		t.Errorf("Expected prompt as last arg, got %v", args)
 	}
 
 	// Should have --stream-json for streaming mode
