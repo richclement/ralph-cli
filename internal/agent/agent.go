@@ -18,6 +18,35 @@ import (
 	"github.com/richclement/ralph-cli/internal/stream"
 )
 
+// Agent Behavioral Differences
+// ============================
+// Agent-specific configuration is distributed across this file and stream/parser.go.
+// This comment summarizes the differences for each supported agent.
+//
+// | Behavior           | claude                              | amp                                   | codex                          |
+// |--------------------|-------------------------------------|---------------------------------------|--------------------------------|
+// | Non-REPL flag      | -p                                  | -x (must be last, before prompt)      | e (subcommand)                 |
+// | Streaming flags    | --output-format stream-json         | --stream-json --dangerously-allow-all | --json --full-auto             |
+// | Text mode flags    | --output-format text                | --dangerously-allow-all               | --full-auto                    |
+// | Prompt handling    | inline argument                     | argument after -x flag                | written to file (.ralph/)      |
+// | Output handling    | stdout                              | stdout                                | -o flag to file, then read     |
+// | Arg ordering       | [flag] [mode-flags] [user-flags] p  | [mode-flags] [user-flags] -x p        | e [mode-flags] [user-flags] pf |
+//
+// Key locations:
+//   - Non-REPL flags: buildArgs() switch statement
+//   - Streaming/text flags: stream.OutputFlags(), stream.TextModeFlags()
+//   - Prompt file handling: buildArgs() codex-specific block
+//   - Output file handling: RunTextMode() with stream.OutputCaptureFor()
+//   - Amp arg ordering: buildAmpArgs() separate function
+//
+// When adding a new agent, update:
+//   1. stream.NormalizeName constants (AgentX)
+//   2. buildArgs() for non-REPL flag
+//   3. stream.OutputFlags() for streaming mode
+//   4. stream.TextModeFlags() for text mode
+//   5. stream.ParserFor() if agent has structured output
+//   6. This comment
+
 const (
 	// RalphDir is the directory where ralph stores its files.
 	RalphDir = ".ralph"
@@ -25,7 +54,8 @@ const (
 
 // RunOptions configures agent execution behavior.
 type RunOptions struct {
-	TextMode bool // Use text output format (no JSON streaming)
+	TextMode   bool   // Use text output format (no JSON streaming)
+	OutputFile string // Output file for text mode (used by Codex -o flag)
 }
 
 // Runner executes agent commands.
@@ -107,26 +137,24 @@ func (r *Runner) createStreamProcessor() (*stream.Processor, *os.File) {
 		return nil, nil
 	}
 
-	agentName := strings.ToLower(strings.TrimSuffix(filepath.Base(r.Settings.Agent.Command), ".exe"))
 	var rawLog io.Writer
 	var rawLogFile *os.File
 
-	if agentName == "claude" {
-		if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+	// Enable raw JSON logging for agents with structured output
+	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+		if r.Verbose {
+			_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to create %s: %v\n", RalphDir, err)
+		}
+	} else {
+		logPath := filepath.Join(RalphDir, "stream-json.log")
+		file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
 			if r.Verbose {
-				_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to create %s: %v\n", RalphDir, err)
+				_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to open stream log %s: %v\n", logPath, err)
 			}
 		} else {
-			logPath := filepath.Join(RalphDir, "stream-json.log")
-			file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-			if err != nil {
-				if r.Verbose {
-					_, _ = fmt.Fprintf(r.Stderr, "[ralph] failed to open stream log %s: %v\n", logPath, err)
-				}
-			} else {
-				rawLogFile = file
-				rawLog = file
-			}
+			rawLogFile = file
+			rawLog = file
 		}
 	}
 
@@ -255,30 +283,32 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 	var promptFile string
 
 	// Infer non-REPL flag based on command name
-	cmdName := filepath.Base(r.Settings.Agent.Command)
-	cmdName = strings.TrimSuffix(cmdName, ".exe") // handle Windows
-	cmdLower := strings.ToLower(cmdName)
+	cmdLower := stream.NormalizeName(r.Settings.Agent.Command)
 
 	// For amp, we need special argument ordering:
 	// amp expects: [flags...] -x <prompt>
 	// The -x flag must immediately precede the prompt
-	if cmdLower == "amp" {
+	if cmdLower == stream.AgentAmp {
 		return r.buildAmpArgs(prompt, opts)
 	}
 
 	// Standard argument ordering for other agents
 	switch cmdLower {
-	case "claude":
+	case stream.AgentClaude:
 		args = append(args, "-p")
-	case "codex":
+	case stream.AgentCodex:
 		args = append(args, "e")
 	}
 
 	// Add output format flags
 	if opts.TextMode {
 		// Text mode: simple text output (for commit messages, etc.)
-		if cmdLower == "claude" {
-			args = append(args, "--output-format", "text")
+		if flags := stream.TextModeFlags(r.Settings.Agent.Command); flags != nil {
+			args = append(args, flags...)
+		}
+		// Codex-specific: add -o flag to write output to file
+		if cmdLower == stream.AgentCodex && opts.OutputFile != "" {
+			args = append(args, "-o", opts.OutputFile)
 		}
 	} else if r.Settings.StreamAgentOutput {
 		// Streaming mode: structured JSON output
@@ -290,8 +320,9 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 	// Add user-configured flags
 	args = append(args, r.Settings.Agent.Flags...)
 
-	// For Codex with "e" subcommand, write prompt to file (matching Python behavior)
-	if cmdLower == "codex" && len(args) > 0 && args[0] == "e" {
+	// For Codex with "e" subcommand in streaming mode, write prompt to file.
+	// In text mode (commit messages), pass prompt directly to avoid -o flag issues.
+	if cmdLower == stream.AgentCodex && len(args) > 0 && args[0] == "e" && !opts.TextMode {
 		promptFile = filepath.Join(RalphDir, fmt.Sprintf("prompt_%03d.txt", iteration))
 		if err := os.WriteFile(promptFile, []byte(prompt), 0o644); err == nil {
 			args = append(args, promptFile)
@@ -301,7 +332,7 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 			promptFile = ""
 		}
 	} else {
-		// Add the prompt as argument for other agents
+		// Add the prompt as argument for other agents (and Codex text mode)
 		args = append(args, prompt)
 	}
 
@@ -316,8 +347,10 @@ func (r *Runner) buildAmpArgs(prompt string, opts RunOptions) ([]string, string)
 
 	// Add output format flags first
 	if opts.TextMode {
-		// For text mode, omit --stream-json but keep autonomy flag
-		args = append(args, "--dangerously-allow-all")
+		// Text mode: use agent-specific text flags
+		if flags := stream.TextModeFlags(r.Settings.Agent.Command); flags != nil {
+			args = append(args, flags...)
+		}
 	} else if r.Settings.StreamAgentOutput {
 		// Streaming mode: structured JSON output
 		if flags := stream.OutputFlags(r.Settings.Agent.Command); flags != nil {
@@ -337,7 +370,19 @@ func (r *Runner) buildAmpArgs(prompt string, opts RunOptions) ([]string, string)
 // RunTextMode executes the agent with text output format (no JSON streaming).
 // Used for simple requests like commit messages where we just need the text response.
 func (r *Runner) RunTextMode(ctx context.Context, prompt string, iteration int) (string, error) {
-	cmd, cleanup := r.buildCmd(ctx, prompt, iteration, RunOptions{TextMode: true})
+	opts := RunOptions{TextMode: true}
+
+	// Check if agent needs output capture (writes to file instead of stdout)
+	capture := stream.OutputCaptureFor(r.Settings.Agent.Command, RalphDir)
+	if capture != nil {
+		// Ensure .ralph directory exists
+		if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+			return "", fmt.Errorf("failed to create %s: %w", RalphDir, err)
+		}
+		opts.OutputFile = capture.File
+	}
+
+	cmd, cleanup := r.buildCmd(ctx, prompt, iteration, opts)
 	defer cleanup()
 
 	var outputBuf bytes.Buffer
@@ -345,6 +390,22 @@ func (r *Runner) RunTextMode(ctx context.Context, prompt string, iteration int) 
 	cmd.Stderr = &outputBuf
 
 	err := cmd.Run()
+
+	// If using output capture, read from file and clean up
+	if capture != nil && opts.OutputFile != "" {
+		defer func() { _ = os.Remove(opts.OutputFile) }()
+
+		content, readErr := os.ReadFile(opts.OutputFile)
+		if readErr != nil {
+			// If we can't read the output file, fall back to stdout
+			if err != nil {
+				return outputBuf.String(), err
+			}
+			return outputBuf.String(), fmt.Errorf("failed to read agent output file: %w", readErr)
+		}
+		return string(content), err
+	}
+
 	return outputBuf.String(), err
 }
 
