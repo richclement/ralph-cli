@@ -21,6 +21,8 @@ import (
 const (
 	// RalphDir is the directory where ralph stores its files.
 	RalphDir = ".ralph"
+	// CodexOutputFile is the filename for capturing Codex text mode output.
+	CodexOutputFile = "codex_output.txt"
 )
 
 // RunOptions configures agent execution behavior.
@@ -108,7 +110,7 @@ func (r *Runner) createStreamProcessor() (*stream.Processor, *os.File) {
 		return nil, nil
 	}
 
-	agentName := strings.ToLower(strings.TrimSuffix(filepath.Base(r.Settings.Agent.Command), ".exe"))
+	agentName := stream.NormalizeName(r.Settings.Agent.Command)
 	var rawLog io.Writer
 	var rawLogFile *os.File
 
@@ -256,9 +258,7 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 	var promptFile string
 
 	// Infer non-REPL flag based on command name
-	cmdName := filepath.Base(r.Settings.Agent.Command)
-	cmdName = strings.TrimSuffix(cmdName, ".exe") // handle Windows
-	cmdLower := strings.ToLower(cmdName)
+	cmdLower := stream.NormalizeName(r.Settings.Agent.Command)
 
 	// For amp, we need special argument ordering:
 	// amp expects: [flags...] -x <prompt>
@@ -278,18 +278,12 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 	// Add output format flags
 	if opts.TextMode {
 		// Text mode: simple text output (for commit messages, etc.)
-		switch cmdLower {
-		case "claude":
-			args = append(args, "--output-format", "text")
-		case "codex":
-			// Add --full-auto for autonomy (no prompts)
-			if flags := stream.TextModeFlags(r.Settings.Agent.Command); flags != nil {
-				args = append(args, flags...)
-			}
-			// Add -o flag to write output to file
-			if opts.OutputFile != "" {
-				args = append(args, "-o", opts.OutputFile)
-			}
+		if flags := stream.TextModeFlags(r.Settings.Agent.Command); flags != nil {
+			args = append(args, flags...)
+		}
+		// Codex-specific: add -o flag to write output to file
+		if cmdLower == "codex" && opts.OutputFile != "" {
+			args = append(args, "-o", opts.OutputFile)
 		}
 	} else if r.Settings.StreamAgentOutput {
 		// Streaming mode: structured JSON output
@@ -348,7 +342,7 @@ func (r *Runner) buildAmpArgs(prompt string, opts RunOptions) ([]string, string)
 // RunTextMode executes the agent with text output format (no JSON streaming).
 // Used for simple requests like commit messages where we just need the text response.
 func (r *Runner) RunTextMode(ctx context.Context, prompt string, iteration int) (string, error) {
-	cmdName := strings.ToLower(strings.TrimSuffix(filepath.Base(r.Settings.Agent.Command), ".exe"))
+	cmdName := stream.NormalizeName(r.Settings.Agent.Command)
 
 	opts := RunOptions{TextMode: true}
 
@@ -359,7 +353,7 @@ func (r *Runner) RunTextMode(ctx context.Context, prompt string, iteration int) 
 		if err := os.MkdirAll(RalphDir, 0o755); err != nil {
 			return "", fmt.Errorf("failed to create %s: %w", RalphDir, err)
 		}
-		outputFile = filepath.Join(RalphDir, "codex_output.txt")
+		outputFile = filepath.Join(RalphDir, CodexOutputFile)
 		opts.OutputFile = outputFile
 	}
 

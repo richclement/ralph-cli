@@ -75,10 +75,11 @@ func TestTextModeFlags(t *testing.T) {
 		command string
 		want    []string
 	}{
+		{"claude", []string{"--output-format", "text"}},
+		{"/path/to/claude", []string{"--output-format", "text"}},
 		{"codex", []string{"--full-auto"}},
 		{"/usr/local/bin/codex", []string{"--full-auto"}},
 		{"codex.exe", []string{"--full-auto"}},
-		{"claude", nil},
 		{"amp", nil},
 		{"unknown", nil},
 	}
