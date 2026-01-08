@@ -278,6 +278,16 @@ result: {"agent": {"command": "claude", "flags": ["--verbose"]}}
 - `codex` -> non-REPL flag `e`
 - `amp` -> non-REPL flag `-x`
 
+**Streaming Output Flags:**
+Agents that support structured JSON output receive additional flags when `streamAgentOutput` is enabled:
+- `claude` -> `--output-format stream-json --verbose`
+- `amp` -> `--stream-json --dangerously-allow-all`
+
+**Text Mode Flags:**
+For simple text operations (e.g., commit message generation), agents use text mode:
+- `claude` -> `--output-format text`
+- `amp` -> `--dangerously-allow-all` (omits `--stream-json`)
+
 ---
 
 ## Loop Behavior
@@ -536,6 +546,40 @@ Use `log` package or simple `fmt.Fprintf(os.Stderr, "[ralph] ...")` for verbose 
 - Test completion response detection regex
 - Test guardrail fail action application
 - Test output truncation
+
+---
+
+## Agent Streaming Formats
+
+### Amp Streaming JSON
+
+Amp outputs 5 message types as NDJSON when `--stream-json` is enabled:
+
+**System Init** (first message):
+```json
+{"type": "system", "subtype": "init", "session_id": "...", "tools": [...]}
+```
+
+**Assistant** (text and tool use):
+```json
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "..."}], "usage": {...}}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "...", "name": "...", "input": {...}}]}}
+```
+
+**User** (tool results):
+```json
+{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "...", "content": "..."}]}}
+```
+
+**Result Success**:
+```json
+{"type": "result", "subtype": "success", "result": "...", "duration_ms": 1234, "num_turns": 3, "usage": {"input_tokens": 100, "output_tokens": 50}}
+```
+
+**Result Error**:
+```json
+{"type": "result", "subtype": "error_during_execution", "error": "...", "is_error": true}
+```
 
 ---
 

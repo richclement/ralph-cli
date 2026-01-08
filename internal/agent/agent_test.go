@@ -726,8 +726,86 @@ func TestBuildArgs_ClaudeTextMode(t *testing.T) {
 	}
 }
 
+func TestBuildArgs_AmpTextMode(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "amp",
+			Flags:   []string{"--some-flag"},
+		},
+		StreamAgentOutput: true, // Would normally add stream flags
+	}
+	r := NewRunner(settings)
+
+	args, _ := r.buildArgs("test prompt", 1, RunOptions{TextMode: true})
+
+	// Should have -x flag for amp
+	if len(args) < 1 || args[0] != "-x" {
+		t.Errorf("Expected first arg to be -x, got %v", args)
+	}
+
+	// Should have --dangerously-allow-all for text mode
+	foundAutonomy := false
+	for _, arg := range args {
+		if arg == "--dangerously-allow-all" {
+			foundAutonomy = true
+			break
+		}
+	}
+	if !foundAutonomy {
+		t.Errorf("Expected --dangerously-allow-all in args for text mode, got %v", args)
+	}
+
+	// Should NOT have --stream-json in text mode
+	for _, arg := range args {
+		if arg == "--stream-json" {
+			t.Errorf("Should not have --stream-json in text mode, got %v", args)
+		}
+	}
+}
+
+func TestBuildArgs_AmpStreamMode(t *testing.T) {
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "amp",
+		},
+		StreamAgentOutput: true,
+	}
+	r := NewRunner(settings)
+
+	args, _ := r.buildArgs("test prompt", 1, RunOptions{})
+
+	// Should have -x flag for amp
+	if len(args) < 1 || args[0] != "-x" {
+		t.Errorf("Expected first arg to be -x, got %v", args)
+	}
+
+	// Should have --stream-json for streaming mode
+	foundStreamJSON := false
+	for _, arg := range args {
+		if arg == "--stream-json" {
+			foundStreamJSON = true
+			break
+		}
+	}
+	if !foundStreamJSON {
+		t.Errorf("Expected --stream-json in args for streaming mode, got %v", args)
+	}
+
+	// Should have --dangerously-allow-all for streaming mode
+	foundAutonomy := false
+	for _, arg := range args {
+		if arg == "--dangerously-allow-all" {
+			foundAutonomy = true
+			break
+		}
+	}
+	if !foundAutonomy {
+		t.Errorf("Expected --dangerously-allow-all in args for streaming mode, got %v", args)
+	}
+}
+
 func TestBuildArgs_NonClaudeTextMode(t *testing.T) {
-	// Text mode should only affect claude, not other agents
+	// Text mode should only affect claude and amp, not other agents
 	settings := &config.Settings{
 		Agent: config.AgentConfig{
 			Command: "custom-agent",
@@ -741,6 +819,12 @@ func TestBuildArgs_NonClaudeTextMode(t *testing.T) {
 	for _, arg := range args {
 		if arg == "--output-format" {
 			t.Errorf("Should not have --output-format for non-claude agent, got %v", args)
+		}
+	}
+	// Should NOT have --dangerously-allow-all for non-amp agents
+	for _, arg := range args {
+		if arg == "--dangerously-allow-all" {
+			t.Errorf("Should not have --dangerously-allow-all for non-amp agent, got %v", args)
 		}
 	}
 }

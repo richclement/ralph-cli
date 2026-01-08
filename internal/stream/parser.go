@@ -43,8 +43,9 @@ func OutputFlags(agentCommand string) []string {
 	switch name {
 	case "claude":
 		return []string{"--output-format", "stream-json", "--verbose"}
+	case "amp":
+		return []string{"--stream-json", "--dangerously-allow-all"}
 	// case "codex": return []string{"--output", "json"} // when known
-	// case "amp": return []string{"--format", "json"} // when known
 	default:
 		return nil
 	}

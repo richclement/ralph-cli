@@ -102,6 +102,16 @@ Ralph uses JSON configuration files located in `.ralph/`:
 - `.ralph/settings.json` - Base configuration
 - `.ralph/settings.local.json` - Local overrides (optional, gitignored)
 
+### Supported Agents
+
+Ralph supports the following CLI LLM agents with automatic flag detection:
+
+| Agent | Non-REPL Flag | Streaming Flags |
+|-------|---------------|-----------------|
+| `claude` | `-p` | `--output-format stream-json --verbose` |
+| `amp` | `-x` | `--stream-json --dangerously-allow-all` |
+| `codex` | `e` | (none yet) |
+
 ### Example Settings
 
 ```json

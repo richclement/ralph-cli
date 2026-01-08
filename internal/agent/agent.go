@@ -270,8 +270,12 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 	// Add output format flags
 	if opts.TextMode {
 		// Text mode: simple text output (for commit messages, etc.)
-		if strings.ToLower(cmdName) == "claude" {
+		switch strings.ToLower(cmdName) {
+		case "claude":
 			args = append(args, "--output-format", "text")
+		case "amp":
+			// For text mode, omit --stream-json but keep autonomy flag
+			args = append(args, "--dangerously-allow-all")
 		}
 	} else if r.Settings.StreamAgentOutput {
 		// Streaming mode: structured JSON output
