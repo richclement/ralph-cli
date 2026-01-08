@@ -34,14 +34,14 @@ type ampMessage struct {
 }
 
 type ampContent struct {
-	Type      string `json:"type"`         // text, tool_use, tool_result
-	Text      string `json:"text"`         // for text type
-	ID        string `json:"id"`           // for tool_use
-	Name      string `json:"name"`         // for tool_use
-	ToolUseID string `json:"tool_use_id"`  // for tool_result
-	Content   string `json:"content"`      // for tool_result
-	IsError   bool   `json:"is_error"`     // for tool_result
-	Input     any    `json:"input"`        // for tool_use (varies)
+	Type      string `json:"type"`        // text, tool_use, tool_result
+	Text      string `json:"text"`        // for text type
+	ID        string `json:"id"`          // for tool_use
+	Name      string `json:"name"`        // for tool_use
+	ToolUseID string `json:"tool_use_id"` // for tool_result
+	Content   string `json:"content"`     // for tool_result
+	IsError   bool   `json:"is_error"`    // for tool_result
+	Input     any    `json:"input"`       // for tool_use (varies)
 }
 
 type ampResult struct {
