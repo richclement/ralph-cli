@@ -376,6 +376,48 @@ func TestFormatFailureMessage_WithTruncation(t *testing.T) {
 	}
 }
 
+func TestFormatFailureMessage_WithHint(t *testing.T) {
+	result := Result{
+		Guardrail: config.Guardrail{
+			Command: "make lint",
+			Hint:    "Fix lint errors only. Do not change behavior.",
+		},
+		Output:   "linting errors found",
+		ExitCode: 1,
+		LogFile:  ".ralph/guardrail_001_make_lint.log",
+	}
+
+	msg := FormatFailureMessage(result, 1000)
+
+	if !strings.Contains(msg, "Hint: Fix lint errors only. Do not change behavior.") {
+		t.Error("Expected message to contain hint")
+	}
+	if !strings.Contains(msg, "make lint") {
+		t.Error("Expected message to contain command")
+	}
+	if !strings.Contains(msg, "linting errors found") {
+		t.Error("Expected message to contain output")
+	}
+}
+
+func TestFormatFailureMessage_WithoutHint(t *testing.T) {
+	result := Result{
+		Guardrail: config.Guardrail{
+			Command: "make test",
+			Hint:    "", // No hint
+		},
+		Output:   "test output",
+		ExitCode: 1,
+		LogFile:  ".ralph/guardrail_001_make_test.log",
+	}
+
+	msg := FormatFailureMessage(result, 1000)
+
+	if strings.Contains(msg, "Hint:") {
+		t.Error("Expected message to NOT contain Hint line when hint is empty")
+	}
+}
+
 func TestGetFailedOutputForPrompt(t *testing.T) {
 	results := []Result{
 		{

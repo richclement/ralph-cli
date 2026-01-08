@@ -38,6 +38,7 @@ type AgentConfig struct {
 type Guardrail struct {
 	Command    string `json:"command"`
 	FailAction string `json:"failAction"` // APPEND, PREPEND, REPLACE
+	Hint       string `json:"hint,omitempty"`
 }
 
 // SCMConfig defines SCM command and tasks.

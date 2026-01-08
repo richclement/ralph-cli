@@ -647,3 +647,43 @@ func TestValidate_NegativeMaximumIterations(t *testing.T) {
 		t.Error("Validate() should return error for negative maximumIterations")
 	}
 }
+
+func TestLoad_GuardrailWithHint(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	content := `{
+		"agent": {"command": "claude"},
+		"guardrails": [
+			{"command": "make lint", "failAction": "APPEND", "hint": "Fix lint errors only. Do not change behavior."},
+			{"command": "make test", "failAction": "APPEND", "hint": "Focus on the failing tests first."},
+			{"command": "make build", "failAction": "APPEND"}
+		]
+	}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if len(s.Guardrails) != 3 {
+		t.Errorf("Expected 3 guardrails, got %d", len(s.Guardrails))
+	}
+
+	// First guardrail should have hint
+	if s.Guardrails[0].Hint != "Fix lint errors only. Do not change behavior." {
+		t.Errorf("Guardrails[0].Hint = %q, want hint text", s.Guardrails[0].Hint)
+	}
+
+	// Second guardrail should have hint
+	if s.Guardrails[1].Hint != "Focus on the failing tests first." {
+		t.Errorf("Guardrails[1].Hint = %q, want hint text", s.Guardrails[1].Hint)
+	}
+
+	// Third guardrail should have empty hint (omitted in JSON)
+	if s.Guardrails[2].Hint != "" {
+		t.Errorf("Guardrails[2].Hint = %q, want empty string", s.Guardrails[2].Hint)
+	}
+}

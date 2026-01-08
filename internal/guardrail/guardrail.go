@@ -207,11 +207,18 @@ func GetFailedResults(results []Result) []Result {
 }
 
 // FormatFailureMessage formats a single guardrail failure for inclusion in the prompt.
-// Includes exit code, log file path, and truncated output (matching Python behavior).
+// Includes exit code, log file path, optional hint, and truncated output.
 func FormatFailureMessage(result Result, truncateLimit int) string {
 	truncated := TruncateOutput(result.Output, truncateLimit)
+
+	// Build the message with optional hint
+	var hintLine string
+	if result.Guardrail.Hint != "" {
+		hintLine = fmt.Sprintf("Hint: %s\n", result.Guardrail.Hint)
+	}
+
 	return fmt.Sprintf(`Guardrail "%s" failed with exit code %d.
-Output file: %s
+%sOutput file: %s
 Output (truncated):
-%s`, result.Guardrail.Command, result.ExitCode, result.LogFile, truncated)
+%s`, result.Guardrail.Command, result.ExitCode, hintLine, result.LogFile, truncated)
 }
