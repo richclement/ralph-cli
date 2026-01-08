@@ -21,3 +21,10 @@
 ### Fixed
 
 - Error in handling agent response when generating a commit message for a change set
+
+## 0.3.0 - 2025-01-07
+
+### Added
+
+- Added optional setting `includeIterationCountInPrompt` to inject current iteration, max iterations, and remaining iterations into agent's prompt
+- Added support for `includeIterationCountInPrompt` to `ralph init`
