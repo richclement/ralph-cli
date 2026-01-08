@@ -21,6 +21,9 @@ func TestNewDefaults(t *testing.T) {
 	if s.StreamAgentOutput != DefaultStreamAgentOutput {
 		t.Errorf("StreamAgentOutput = %v, want %v", s.StreamAgentOutput, DefaultStreamAgentOutput)
 	}
+	if s.IncludeIterationCountInPrompt {
+		t.Errorf("IncludeIterationCountInPrompt = %v, want false", s.IncludeIterationCountInPrompt)
+	}
 }
 
 func TestLoad_FileNotFound(t *testing.T) {
@@ -42,6 +45,7 @@ func TestLoad_ValidFile(t *testing.T) {
 		"completionResponse": "FINISHED",
 		"outputTruncateChars": 1000,
 		"streamAgentOutput": false,
+		"includeIterationCountInPrompt": true,
 		"agent": {
 			"command": "claude",
 			"flags": ["--model", "opus"]
@@ -71,6 +75,9 @@ func TestLoad_ValidFile(t *testing.T) {
 	if s.StreamAgentOutput != false {
 		t.Errorf("StreamAgentOutput = %v, want false", s.StreamAgentOutput)
 	}
+	if s.IncludeIterationCountInPrompt != true {
+		t.Errorf("IncludeIterationCountInPrompt = %v, want true", s.IncludeIterationCountInPrompt)
+	}
 	if s.Agent.Command != "claude" {
 		t.Errorf("Agent.Command = %q, want claude", s.Agent.Command)
 	}
@@ -87,7 +94,7 @@ func TestDeepMerge_ScalarOverride(t *testing.T) {
 	s.Agent.Command = "claude"
 	s.Agent.Flags = []string{"--model", "opus"}
 
-	localJSON := `{"maximumIterations": 20, "completionResponse": "COMPLETE"}`
+	localJSON := `{"maximumIterations": 20, "completionResponse": "COMPLETE", "includeIterationCountInPrompt": true}`
 	if err := deepMerge(&s, []byte(localJSON)); err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +104,9 @@ func TestDeepMerge_ScalarOverride(t *testing.T) {
 	}
 	if s.CompletionResponse != "COMPLETE" {
 		t.Errorf("CompletionResponse = %q, want COMPLETE", s.CompletionResponse)
+	}
+	if s.IncludeIterationCountInPrompt != true {
+		t.Errorf("IncludeIterationCountInPrompt = %v, want true", s.IncludeIterationCountInPrompt)
 	}
 	// Should preserve existing agent
 	if s.Agent.Command != "claude" {

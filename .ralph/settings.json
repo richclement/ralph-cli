@@ -3,6 +3,7 @@
   "completionResponse": "DONE",
   "outputTruncateChars": 5000,
   "streamAgentOutput": true,
+  "includeIterationCountInPrompt": true,
   "agent": {
     "command": "claude",
     "flags": [

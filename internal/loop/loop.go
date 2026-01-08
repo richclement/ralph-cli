@@ -91,7 +91,7 @@ func (r *Runner) Run(ctx context.Context) int {
 		r.print("\n=== Ralph iteration %d/%d ===", iteration, r.opts.Settings.MaximumIterations)
 
 		// Build the prompt
-		prompt, err := r.buildPrompt(failedResults)
+		prompt, err := r.buildPrompt(failedResults, iteration)
 		if err != nil {
 			_, _ = fmt.Fprintf(r.opts.Stderr, "error: failed to read prompt file: %v\n", err)
 			return ExitConfigError
@@ -161,7 +161,7 @@ func (r *Runner) Run(ctx context.Context) int {
 }
 
 // buildPrompt constructs the prompt for the current iteration.
-func (r *Runner) buildPrompt(failedResults []guardrail.Result) (string, error) {
+func (r *Runner) buildPrompt(failedResults []guardrail.Result, iteration int) (string, error) {
 	var basePrompt string
 
 	if r.opts.PromptFile != "" {
@@ -175,15 +175,19 @@ func (r *Runner) buildPrompt(failedResults []guardrail.Result) (string, error) {
 		basePrompt = r.opts.Prompt
 	}
 
-	if len(failedResults) == 0 {
-		return basePrompt, nil
+	prompt := basePrompt
+	if len(failedResults) > 0 {
+		// Apply each failed guardrail's action sequentially (matching Python behavior)
+		for _, result := range failedResults {
+			failureMessage := guardrail.FormatFailureMessage(result, r.opts.Settings.OutputTruncateChars)
+			prompt = guardrail.ApplyFailAction(prompt, failureMessage, result.Guardrail.FailAction)
+		}
 	}
 
-	// Apply each failed guardrail's action sequentially (matching Python behavior)
-	prompt := basePrompt
-	for _, result := range failedResults {
-		failureMessage := guardrail.FormatFailureMessage(result, r.opts.Settings.OutputTruncateChars)
-		prompt = guardrail.ApplyFailAction(prompt, failureMessage, result.Guardrail.FailAction)
+	if r.opts.Settings.IncludeIterationCountInPrompt {
+		remaining := r.opts.Settings.MaximumIterations - iteration
+		summary := fmt.Sprintf("Iteration %d of %d, %d remaining.", iteration, r.opts.Settings.MaximumIterations, remaining)
+		prompt = summary + "\n\n" + prompt
 	}
 	return prompt, nil
 }
