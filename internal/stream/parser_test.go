@@ -80,7 +80,9 @@ func TestTextModeFlags(t *testing.T) {
 		{"codex", []string{"--full-auto"}},
 		{"/usr/local/bin/codex", []string{"--full-auto"}},
 		{"codex.exe", []string{"--full-auto"}},
-		{"amp", nil},
+		{"amp", []string{"--dangerously-allow-all"}},
+		{"/usr/local/bin/amp", []string{"--dangerously-allow-all"}},
+		{"amp.exe", []string{"--dangerously-allow-all"}},
 		{"unknown", nil},
 	}
 
@@ -136,4 +138,38 @@ func TestEventIsError(t *testing.T) {
 			t.Error("expected IsError() = false")
 		}
 	})
+}
+
+func TestOutputCaptureFor(t *testing.T) {
+	tests := []struct {
+		command  string
+		baseDir  string
+		wantNil  bool
+		wantFile string
+	}{
+		{"codex", ".ralph", false, ".ralph/codex_output.txt"},
+		{"/usr/local/bin/codex", ".ralph", false, ".ralph/codex_output.txt"},
+		{"codex.exe", "/tmp/test", false, "/tmp/test/codex_output.txt"},
+		{"claude", ".ralph", true, ""},
+		{"amp", ".ralph", true, ""},
+		{"unknown", ".ralph", true, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			got := OutputCaptureFor(tt.command, tt.baseDir)
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("OutputCaptureFor(%q, %q) = %v, want nil", tt.command, tt.baseDir, got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("OutputCaptureFor(%q, %q) = nil, want OutputCapture", tt.command, tt.baseDir)
+			}
+			if got.File != tt.wantFile {
+				t.Errorf("OutputCaptureFor(%q, %q).File = %q, want %q", tt.command, tt.baseDir, got.File, tt.wantFile)
+			}
+		})
+	}
 }

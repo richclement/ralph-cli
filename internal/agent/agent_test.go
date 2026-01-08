@@ -1124,7 +1124,13 @@ func TestCreateStreamProcessor_Enabled(t *testing.T) {
 	}
 }
 
-func TestCreateStreamProcessor_NonClaude(t *testing.T) {
+func TestCreateStreamProcessor_UnknownAgent(t *testing.T) {
+	// Create .ralph directory for log file
+	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .ralph directory: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(RalphDir) }()
+
 	settings := &config.Settings{
 		Agent: config.AgentConfig{
 			Command: "other-agent",
@@ -1143,9 +1149,9 @@ func TestCreateStreamProcessor_NonClaude(t *testing.T) {
 		t.Error("Expected nil processor for unknown agent without structured output support")
 		_ = proc.Close()
 	}
-	// No log file for non-claude agents
+	// Log file is created for all agents when streaming is enabled
 	if logFile != nil {
-		t.Error("Expected nil log file for non-claude agent")
+		_ = logFile.Close()
 	}
 }
 

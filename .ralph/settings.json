@@ -5,12 +5,8 @@
   "streamAgentOutput": true,
   "includeIterationCountInPrompt": true,
   "agent": {
-    "command": "claude",
+    "command": "codex",
     "flags": [
-      "--model",
-      "claude-opus-4-5",
-      "--permission-mode",
-      "acceptEdits"
     ]
   },
   "guardrails": [
