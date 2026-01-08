@@ -48,6 +48,9 @@ func TestOutputFlags(t *testing.T) {
 		{"amp", []string{"--stream-json", "--dangerously-allow-all"}},
 		{"/usr/local/bin/amp", []string{"--stream-json", "--dangerously-allow-all"}},
 		{"amp.exe", []string{"--stream-json", "--dangerously-allow-all"}},
+		{"codex", []string{"--json", "--full-auto"}},
+		{"/usr/local/bin/codex", []string{"--json", "--full-auto"}},
+		{"codex.exe", []string{"--json", "--full-auto"}},
 		{"unknown", nil},
 	}
 
@@ -58,9 +61,38 @@ func TestOutputFlags(t *testing.T) {
 				t.Errorf("OutputFlags(%q) = %v, want %v", tt.command, got, tt.want)
 				return
 			}
-			for i, v := range got {
-				if v != tt.want[i] {
-					t.Errorf("OutputFlags(%q)[%d] = %q, want %q", tt.command, i, v, tt.want[i])
+			for i, flag := range got {
+				if flag != tt.want[i] {
+					t.Errorf("OutputFlags(%q)[%d] = %q, want %q", tt.command, i, flag, tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestTextModeFlags(t *testing.T) {
+	tests := []struct {
+		command string
+		want    []string
+	}{
+		{"codex", []string{"--full-auto"}},
+		{"/usr/local/bin/codex", []string{"--full-auto"}},
+		{"codex.exe", []string{"--full-auto"}},
+		{"claude", nil},
+		{"amp", nil},
+		{"unknown", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			got := TextModeFlags(tt.command)
+			if len(got) != len(tt.want) {
+				t.Errorf("TextModeFlags(%q) = %v, want %v", tt.command, got, tt.want)
+				return
+			}
+			for i, flag := range got {
+				if flag != tt.want[i] {
+					t.Errorf("TextModeFlags(%q)[%d] = %q, want %q", tt.command, i, flag, tt.want[i])
 				}
 			}
 		})

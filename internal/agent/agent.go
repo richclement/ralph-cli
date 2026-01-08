@@ -25,7 +25,8 @@ const (
 
 // RunOptions configures agent execution behavior.
 type RunOptions struct {
-	TextMode bool // Use text output format (no JSON streaming)
+	TextMode   bool   // Use text output format (no JSON streaming)
+	OutputFile string // Output file for text mode (used by Codex -o flag)
 }
 
 // Runner executes agent commands.
@@ -277,8 +278,18 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 	// Add output format flags
 	if opts.TextMode {
 		// Text mode: simple text output (for commit messages, etc.)
-		if cmdLower == "claude" {
+		switch cmdLower {
+		case "claude":
 			args = append(args, "--output-format", "text")
+		case "codex":
+			// Add --full-auto for autonomy (no prompts)
+			if flags := stream.TextModeFlags(r.Settings.Agent.Command); flags != nil {
+				args = append(args, flags...)
+			}
+			// Add -o flag to write output to file
+			if opts.OutputFile != "" {
+				args = append(args, "-o", opts.OutputFile)
+			}
 		}
 	} else if r.Settings.StreamAgentOutput {
 		// Streaming mode: structured JSON output
@@ -337,7 +348,22 @@ func (r *Runner) buildAmpArgs(prompt string, opts RunOptions) ([]string, string)
 // RunTextMode executes the agent with text output format (no JSON streaming).
 // Used for simple requests like commit messages where we just need the text response.
 func (r *Runner) RunTextMode(ctx context.Context, prompt string, iteration int) (string, error) {
-	cmd, cleanup := r.buildCmd(ctx, prompt, iteration, RunOptions{TextMode: true})
+	cmdName := strings.ToLower(strings.TrimSuffix(filepath.Base(r.Settings.Agent.Command), ".exe"))
+
+	opts := RunOptions{TextMode: true}
+
+	// For Codex, use -o flag to write output to a file
+	var outputFile string
+	if cmdName == "codex" {
+		// Ensure .ralph directory exists
+		if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+			return "", fmt.Errorf("failed to create %s: %w", RalphDir, err)
+		}
+		outputFile = filepath.Join(RalphDir, "codex_output.txt")
+		opts.OutputFile = outputFile
+	}
+
+	cmd, cleanup := r.buildCmd(ctx, prompt, iteration, opts)
 	defer cleanup()
 
 	var outputBuf bytes.Buffer
@@ -345,6 +371,22 @@ func (r *Runner) RunTextMode(ctx context.Context, prompt string, iteration int) 
 	cmd.Stderr = &outputBuf
 
 	err := cmd.Run()
+
+	// For Codex, read output from file and clean up
+	if cmdName == "codex" && outputFile != "" {
+		defer func() { _ = os.Remove(outputFile) }()
+
+		content, readErr := os.ReadFile(outputFile)
+		if readErr != nil {
+			// If we can't read the output file, fall back to stdout
+			if err != nil {
+				return outputBuf.String(), err
+			}
+			return outputBuf.String(), fmt.Errorf("failed to read codex output file: %w", readErr)
+		}
+		return string(content), err
+	}
+
 	return outputBuf.String(), err
 }
 

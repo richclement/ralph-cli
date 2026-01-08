@@ -106,11 +106,20 @@ Ralph uses JSON configuration files located in `.ralph/`:
 
 Ralph supports the following CLI LLM agents with automatic flag detection:
 
-| Agent | Non-REPL Flag | Streaming Flags |
-|-------|---------------|-----------------|
-| `claude` | `-p` | `--output-format stream-json --verbose` |
-| `amp` | `-x` | `--stream-json --dangerously-allow-all` |
-| `codex` | `e` | (none yet) |
+| Agent | Subcommand | Streaming Flags | Text Mode Flags | Prompt Handling |
+|-------|------------|-----------------|-----------------|-----------------|
+| `claude` | `-p` | `--output-format stream-json --verbose` | `--output-format text` | Inline argument |
+| `amp` | `-x` | `--stream-json --dangerously-allow-all` | `--dangerously-allow-all` | Inline argument |
+| `codex` | `e` | `--json --full-auto` | `--full-auto -o <file>` | Written to `.ralph/prompt_###.txt` |
+
+**Amp Integration:**
+- `--dangerously-allow-all` enables autonomous tool execution without approval prompts
+- Amp requires `-x <prompt>` at the end of the command, so ralph orders flags accordingly
+
+**Codex Integration:**
+- Streaming mode uses `--json` for structured output and `--full-auto` for autonomous operation
+- Text mode (for commit messages) omits `--json` and uses `-o <file>` to capture output
+- Prompts are written to temporary files to avoid shell escaping issues
 
 ### Example Settings
 
@@ -180,7 +189,8 @@ ralph-cli/
 │   ├── agent/          # Agent command execution
 │   ├── guardrail/      # Guardrail execution and logging
 │   ├── loop/           # Main loop orchestration
-│   └── scm/            # SCM task execution
+│   ├── scm/            # SCM task execution
+│   └── stream/         # Agent output parsing and formatting
 ├── .ralph/             # Runtime directory
 └── specs/              # PRD and implementation tasks
 ```

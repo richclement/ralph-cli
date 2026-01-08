@@ -278,15 +278,39 @@ result: {"agent": {"command": "claude", "flags": ["--verbose"]}}
 - `codex` -> non-REPL flag `e`
 - `amp` -> non-REPL flag `-x`
 
-**Streaming Output Flags:**
-Agents that support structured JSON output receive additional flags when `streamAgentOutput` is enabled:
-- `claude` -> `--output-format stream-json --verbose`
-- `amp` -> `--stream-json --dangerously-allow-all`
+**Agent Output Flags:**
 
-**Text Mode Flags:**
-For simple text operations (e.g., commit message generation), agents use text mode:
-- `claude` -> `--output-format text`
-- `amp` -> `--dangerously-allow-all` (omits `--stream-json`)
+When streaming is enabled (`streamAgentOutput: true`), agent-specific flags are added:
+
+| Agent | Streaming Flags | Text Mode Flags |
+|-------|-----------------|-----------------|
+| `claude` | `--output-format stream-json --verbose` | `--output-format text` |
+| `amp` | `--stream-json --dangerously-allow-all` | `--dangerously-allow-all` |
+| `codex` | `--json --full-auto` | `--full-auto -o <output-file>` |
+
+**Amp Integration Details:**
+
+Amp uses `--dangerously-allow-all` to enable autonomous tool execution without approval prompts.
+Amp requires `-x <prompt>` to appear together at the end of the command,
+so ralph orders flags accordingly: `amp [flags...] -x <prompt>`.
+
+**Codex Integration Details:**
+
+Streaming mode:
+```
+codex e --json --full-auto <prompt-file>
+```
+- `--json` enables structured JSON output for parsing
+- `--full-auto` enables autonomous mode (no approval prompts)
+- Prompt is written to `.ralph/prompt_###.txt` to avoid shell escaping issues
+
+Text mode (for commit messages):
+```
+codex e --full-auto -o <output-file> <prompt-file>
+```
+- Omits `--json` for plain text output
+- `-o <output-file>` writes final response to file (read and cleaned up after execution)
+- `--full-auto` still used for autonomous operation
 
 ---
 

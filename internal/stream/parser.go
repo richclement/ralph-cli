@@ -45,7 +45,24 @@ func OutputFlags(agentCommand string) []string {
 		return []string{"--output-format", "stream-json", "--verbose"}
 	case "amp":
 		return []string{"--stream-json", "--dangerously-allow-all"}
-	// case "codex": return []string{"--output", "json"} // when known
+	case "codex":
+		return []string{"--json", "--full-auto"}
+	default:
+		return nil
+	}
+}
+
+// TextModeFlags returns agent-specific flags for text output (no JSON streaming).
+// Used for simple requests like commit messages where we just need text response.
+// Returns nil if agent doesn't require special text mode flags.
+func TextModeFlags(agentCommand string) []string {
+	name := strings.ToLower(filepath.Base(agentCommand))
+	name = strings.TrimSuffix(name, ".exe")
+
+	switch name {
+	case "codex":
+		// Text mode: omit --json, keep --full-auto for autonomy
+		return []string{"--full-auto"}
 	default:
 		return nil
 	}

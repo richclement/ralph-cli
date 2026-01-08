@@ -262,6 +262,7 @@ func TestBuildArgs_Codex(t *testing.T) {
 		Agent: config.AgentConfig{
 			Command: "codex",
 		},
+		StreamAgentOutput: false, // No streaming flags
 	}
 	r := NewRunner(settings)
 
@@ -277,9 +278,16 @@ func TestBuildArgs_Codex(t *testing.T) {
 		t.Error("Expected prompt file for codex")
 	}
 
-	// Prompt file should be in args
-	if len(args) < 2 || args[1] != promptFile {
-		t.Errorf("Expected prompt file as second arg, got %v", args)
+	// Prompt file should be last arg
+	if len(args) < 2 || args[len(args)-1] != promptFile {
+		t.Errorf("Expected prompt file as last arg, got %v", args)
+	}
+
+	// Should NOT have --json or --full-auto when streaming is disabled
+	for _, arg := range args {
+		if arg == "--json" || arg == "--full-auto" {
+			t.Errorf("Should not have streaming flags when StreamAgentOutput is false, got %v", args)
+		}
 	}
 }
 
@@ -840,6 +848,156 @@ func TestBuildArgs_NonClaudeTextMode(t *testing.T) {
 	for _, arg := range args {
 		if arg == "--dangerously-allow-all" {
 			t.Errorf("Should not have --dangerously-allow-all for non-amp agent, got %v", args)
+		}
+	}
+}
+
+func TestBuildArgs_CodexStreamingMode(t *testing.T) {
+	// Create .ralph directory for prompt file
+	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .ralph directory: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(RalphDir) }()
+
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "codex",
+			Flags:   []string{"--custom"},
+		},
+		StreamAgentOutput: true,
+	}
+	r := NewRunner(settings)
+
+	args, promptFile := r.buildArgs("test prompt", 1, RunOptions{})
+
+	// Should have "e" subcommand for codex
+	if len(args) < 1 || args[0] != "e" {
+		t.Errorf("Expected first arg to be 'e', got %v", args)
+	}
+
+	// Should have --json flag
+	foundJSON := false
+	for _, arg := range args {
+		if arg == "--json" {
+			foundJSON = true
+			break
+		}
+	}
+	if !foundJSON {
+		t.Errorf("Expected --json in args, got %v", args)
+	}
+
+	// Should have --full-auto flag
+	foundFullAuto := false
+	for _, arg := range args {
+		if arg == "--full-auto" {
+			foundFullAuto = true
+			break
+		}
+	}
+	if !foundFullAuto {
+		t.Errorf("Expected --full-auto in args, got %v", args)
+	}
+
+	// Should have prompt file
+	if promptFile == "" {
+		t.Error("Expected prompt file for codex")
+	}
+
+	// Should include user flags
+	foundCustom := false
+	for _, arg := range args {
+		if arg == "--custom" {
+			foundCustom = true
+			break
+		}
+	}
+	if !foundCustom {
+		t.Errorf("Expected --custom in args, got %v", args)
+	}
+}
+
+func TestBuildArgs_CodexTextMode(t *testing.T) {
+	// Create .ralph directory for prompt file
+	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .ralph directory: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(RalphDir) }()
+
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "codex",
+		},
+		StreamAgentOutput: true, // Would normally add --json, but text mode overrides
+	}
+	r := NewRunner(settings)
+
+	outputFile := ".ralph/test_output.txt"
+	args, promptFile := r.buildArgs("test prompt", 1, RunOptions{TextMode: true, OutputFile: outputFile})
+
+	// Should have "e" subcommand for codex
+	if len(args) < 1 || args[0] != "e" {
+		t.Errorf("Expected first arg to be 'e', got %v", args)
+	}
+
+	// Should have --full-auto flag (text mode uses this for autonomy)
+	foundFullAuto := false
+	for _, arg := range args {
+		if arg == "--full-auto" {
+			foundFullAuto = true
+			break
+		}
+	}
+	if !foundFullAuto {
+		t.Errorf("Expected --full-auto in args, got %v", args)
+	}
+
+	// Should NOT have --json flag in text mode
+	for _, arg := range args {
+		if arg == "--json" {
+			t.Errorf("Should not have --json in text mode, got %v", args)
+		}
+	}
+
+	// Should have -o flag with output file
+	foundO := false
+	for i, arg := range args {
+		if arg == "-o" && i+1 < len(args) && args[i+1] == outputFile {
+			foundO = true
+			break
+		}
+	}
+	if !foundO {
+		t.Errorf("Expected -o %s in args, got %v", outputFile, args)
+	}
+
+	// Should have prompt file
+	if promptFile == "" {
+		t.Error("Expected prompt file for codex")
+	}
+}
+
+func TestBuildArgs_CodexTextModeNoOutputFile(t *testing.T) {
+	// Create .ralph directory for prompt file
+	if err := os.MkdirAll(RalphDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .ralph directory: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(RalphDir) }()
+
+	settings := &config.Settings{
+		Agent: config.AgentConfig{
+			Command: "codex",
+		},
+	}
+	r := NewRunner(settings)
+
+	// Text mode without output file - should not add -o flag
+	args, _ := r.buildArgs("test prompt", 1, RunOptions{TextMode: true})
+
+	// Should NOT have -o flag when output file is empty
+	for _, arg := range args {
+		if arg == "-o" {
+			t.Errorf("Should not have -o flag when no output file specified, got %v", args)
 		}
 	}
 }
