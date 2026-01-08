@@ -257,20 +257,27 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 	// Infer non-REPL flag based on command name
 	cmdName := filepath.Base(r.Settings.Agent.Command)
 	cmdName = strings.TrimSuffix(cmdName, ".exe") // handle Windows
+	cmdLower := strings.ToLower(cmdName)
 
-	switch strings.ToLower(cmdName) {
+	// For amp, we need special argument ordering:
+	// amp expects: [flags...] -x <prompt>
+	// The -x flag must immediately precede the prompt
+	if cmdLower == "amp" {
+		return r.buildAmpArgs(prompt, opts)
+	}
+
+	// Standard argument ordering for other agents
+	switch cmdLower {
 	case "claude":
 		args = append(args, "-p")
 	case "codex":
 		args = append(args, "e")
-	case "amp":
-		args = append(args, "-x")
 	}
 
 	// Add output format flags
 	if opts.TextMode {
 		// Text mode: simple text output (for commit messages, etc.)
-		if strings.ToLower(cmdName) == "claude" {
+		if cmdLower == "claude" {
 			args = append(args, "--output-format", "text")
 		}
 	} else if r.Settings.StreamAgentOutput {
@@ -284,7 +291,7 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 	args = append(args, r.Settings.Agent.Flags...)
 
 	// For Codex with "e" subcommand, write prompt to file (matching Python behavior)
-	if strings.ToLower(cmdName) == "codex" && len(args) > 0 && args[0] == "e" {
+	if cmdLower == "codex" && len(args) > 0 && args[0] == "e" {
 		promptFile = filepath.Join(RalphDir, fmt.Sprintf("prompt_%03d.txt", iteration))
 		if err := os.WriteFile(promptFile, []byte(prompt), 0o644); err == nil {
 			args = append(args, promptFile)
@@ -299,6 +306,32 @@ func (r *Runner) buildArgs(prompt string, iteration int, opts RunOptions) ([]str
 	}
 
 	return args, promptFile
+}
+
+// buildAmpArgs constructs arguments for the amp CLI.
+// Amp requires: [flags...] -x <prompt>
+// The -x flag must immediately precede the prompt argument.
+func (r *Runner) buildAmpArgs(prompt string, opts RunOptions) ([]string, string) {
+	var args []string
+
+	// Add output format flags first
+	if opts.TextMode {
+		// For text mode, omit --stream-json but keep autonomy flag
+		args = append(args, "--dangerously-allow-all")
+	} else if r.Settings.StreamAgentOutput {
+		// Streaming mode: structured JSON output
+		if flags := stream.OutputFlags(r.Settings.Agent.Command); flags != nil {
+			args = append(args, flags...)
+		}
+	}
+
+	// Add user-configured flags
+	args = append(args, r.Settings.Agent.Flags...)
+
+	// Add -x and prompt last (amp requires prompt immediately after -x)
+	args = append(args, "-x", prompt)
+
+	return args, ""
 }
 
 // RunTextMode executes the agent with text output format (no JSON streaming).

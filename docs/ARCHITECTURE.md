@@ -23,7 +23,8 @@ and optionally executes SCM tasks (commit/push) after guardrails pass.
 - `internal/config` loads `.ralph/settings.json`, merges
   `.ralph/settings.local.json`, applies CLI overrides, and validates settings.
 - `internal/agent` executes the agent command, supports streaming output, and
-  infers non-REPL flags (`claude -p`, `codex e`, `amp -x`).
+  infers non-REPL flags (`claude -p`, `codex e`, `amp -x`). Also handles
+  text mode for simple requests (commit messages) with agent-specific flags.
 - `internal/guardrail` runs guardrail commands, writes full logs to `.ralph/`,
   truncates output for prompt feedback, and applies fail actions.
 - `internal/loop` orchestrates iterations, prompt construction, guardrails,
@@ -31,6 +32,8 @@ and optionally executes SCM tasks (commit/push) after guardrails pass.
 - `internal/scm` runs SCM tasks and uses the agent to generate commit messages.
 - `internal/response` extracts `<response>...</response>` and determines
   completion.
+- `internal/stream` provides parsers for agent streaming JSON formats (Claude,
+  Amp) and formats events for display.
 
 ## Configuration and Precedence
 Settings are loaded in this order:
@@ -58,6 +61,20 @@ Agent commands run via the user's shell (`$SHELL -ic`) so aliases/functions are
 available. Output is always captured; if streaming is enabled:
 - On non-Windows, a PTY is used for live output when possible.
 - A pipe-based fallback is used if PTY setup fails.
+
+### Streaming Modes
+
+| Agent | Streaming Flags | Text Mode Flags |
+|-------|-----------------|-----------------|
+| `claude` | `--output-format stream-json --verbose` | `--output-format text` |
+| `amp` | `--stream-json --dangerously-allow-all` | `--dangerously-allow-all` |
+| `codex` | (none) | (none) |
+
+The `--dangerously-allow-all` flag for Amp enables autonomous tool execution
+without approval prompts, matching the autonomous workflow ralph provides.
+
+Note: Amp requires `-x <prompt>` to appear together at the end of the command,
+so ralph orders flags accordingly: `amp [flags...] -x <prompt>`.
 
 ## Guardrails
 Guardrails run after each agent response. Results include:

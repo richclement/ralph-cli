@@ -45,6 +45,9 @@ func TestOutputFlags(t *testing.T) {
 	}{
 		{"claude", []string{"--output-format", "stream-json", "--verbose"}},
 		{"/path/to/claude", []string{"--output-format", "stream-json", "--verbose"}},
+		{"amp", []string{"--stream-json", "--dangerously-allow-all"}},
+		{"/usr/local/bin/amp", []string{"--stream-json", "--dangerously-allow-all"}},
+		{"amp.exe", []string{"--stream-json", "--dangerously-allow-all"}},
 		{"unknown", nil},
 	}
 
@@ -53,6 +56,12 @@ func TestOutputFlags(t *testing.T) {
 			got := OutputFlags(tt.command)
 			if len(got) != len(tt.want) {
 				t.Errorf("OutputFlags(%q) = %v, want %v", tt.command, got, tt.want)
+				return
+			}
+			for i, v := range got {
+				if v != tt.want[i] {
+					t.Errorf("OutputFlags(%q)[%d] = %q, want %q", tt.command, i, v, tt.want[i])
+				}
 			}
 		})
 	}
