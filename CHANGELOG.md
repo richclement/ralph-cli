@@ -28,3 +28,12 @@
 
 - Added optional setting `includeIterationCountInPrompt` to inject current iteration, max iterations, and remaining iterations into agent's prompt
 - Added support for `includeIterationCountInPrompt` to `ralph init`
+
+## 0.4.0 - 2025-01-09
+
+### Added
+
+- Added support for codex
+- Added support for Amp
+- Added guardrail `hint` field to allow custom hints to be included in the agent prompt when a guardrail fails
+- Improved completion response handling, `<response></response>` tags are no longer needed
