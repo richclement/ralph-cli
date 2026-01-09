@@ -82,34 +82,52 @@ func TestIsComplete(t *testing.T) {
 		want               bool
 	}{
 		{
-			name:               "exact match",
-			output:             "<response>DONE</response>",
+			name:               "json result ends with completion",
+			output:             `{"type":"result","result":"Task completed successfully. DONE"}`,
 			completionResponse: "DONE",
 			want:               true,
 		},
 		{
-			name:               "case insensitive match",
-			output:             "<response>done</response>",
+			name:               "json result ends with completion case insensitive",
+			output:             `{"type":"result","result":"All tasks finished. done"}`,
 			completionResponse: "DONE",
 			want:               true,
 		},
 		{
-			name:               "different response",
-			output:             "<response>NOT_DONE</response>",
+			name:               "json result does not end with completion",
+			output:             `{"type":"result","result":"I'm not DONE yet, more work needed"}`,
 			completionResponse: "DONE",
 			want:               false,
 		},
 		{
-			name:               "no tag",
+			name:               "json result multi-word completion",
+			output:             `{"type":"result","result":"Review complete. Task completed successfully"}`,
+			completionResponse: "Task completed successfully",
+			want:               true,
+		},
+		{
+			name:               "json result exact match",
+			output:             `{"type":"result","result":"DONE"}`,
+			completionResponse: "DONE",
+			want:               true,
+		},
+		{
+			name:               "no json result",
 			output:             "DONE",
 			completionResponse: "DONE",
 			want:               false,
 		},
 		{
-			name:               "custom completion response",
-			output:             "<response>FINISHED</response>",
-			completionResponse: "FINISHED",
+			name:               "completion response is literal string",
+			output:             `{"type":"result","result":"Finished. <response>DONE</response>"}`,
+			completionResponse: "<response>DONE</response>",
 			want:               true,
+		},
+		{
+			name:               "tags in result not special",
+			output:             `{"type":"result","result":"<response>DONE</response>"}`,
+			completionResponse: "DONE",
+			want:               false,
 		},
 	}
 
@@ -215,23 +233,6 @@ func TestIsComplete_JSON(t *testing.T) {
 	}
 }
 
-func TestIsComplete_JSONAssistantText(t *testing.T) {
-	output := `{"type":"assistant","message":{"content":[{"type":"text","text":"<response>DONE</response>"}]}}`
-
-	if !IsComplete(output, "DONE") {
-		t.Error("IsComplete should return true for response tag in assistant JSON")
-	}
-}
-
-func TestIsComplete_Fallback(t *testing.T) {
-	// No JSON result, should fall back to <response> regex
-	output := "Some output\n<response>completed</response>"
-
-	if !IsComplete(output, "completed") {
-		t.Error("IsComplete should fall back to <response> extraction")
-	}
-}
-
 func TestIsComplete_JSONPriority(t *testing.T) {
 	// Both JSON and <response> present - JSON should take priority
 	output := `{"type":"result","result":"json_result"}` + "\n<response>xml_result</response>"
@@ -245,30 +246,15 @@ func TestIsComplete_JSONPriority(t *testing.T) {
 	}
 }
 
-func TestIsComplete_ResponseTagInResult(t *testing.T) {
-	// JSON result contains <response> tag (real-world case: Claude outputs tag in its response)
-	output := `{"type":"result","result":"## Code Review\n\nLooks good!\n\n<response>DONE</response>"}`
-
-	if !IsComplete(output, "DONE") {
-		t.Error("IsComplete should extract <response> tag content from JSON result field")
-	}
-
-	// Should also work when completionResponse is the full tag - we extract content from it too
-	if !IsComplete(output, "<response>DONE</response>") {
-		t.Error("IsComplete should match when completionResponse includes the tags (extracts DONE from both)")
-	}
-}
-
-func TestIsComplete_ResponseTagInLongResult(t *testing.T) {
-	// Simulates the actual bug: long markdown response with <response> tag at end
-	longResult := "## Summary\n\nThis is a very long code review with lots of content...\n\n"
-	longResult += "### Issues Found\n\n1. Issue one\n2. Issue two\n\n"
-	longResult += "### Recommendation\n\nApprove with minor changes.\n\n"
-	longResult += "<response>DONE</response>"
+func TestIsComplete_LongResult(t *testing.T) {
+	// Long markdown response ending with completion string
+	longResult := `## Summary\n\nThis is a very long code review with lots of content...\n\n`
+	longResult += `### Issues Found\n\n1. Issue one\n2. Issue two\n\n`
+	longResult += `### Recommendation\n\nApprove with minor changes.\n\nDONE`
 
 	output := `{"type":"result","result":"` + longResult + `"}`
 
 	if !IsComplete(output, "DONE") {
-		t.Error("IsComplete should detect <response>DONE</response> in long JSON result")
+		t.Error("IsComplete should detect DONE at end of long JSON result")
 	}
 }

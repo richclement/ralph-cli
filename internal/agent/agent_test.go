@@ -540,28 +540,6 @@ func TestRunner_Run_BasicExecution(t *testing.T) {
 	}
 }
 
-func TestRunner_Run_WithStreaming(t *testing.T) {
-	settings := &config.Settings{
-		Agent: config.AgentConfig{
-			Command: "echo",
-		},
-		StreamAgentOutput: true,
-	}
-
-	var stdout, stderr bytes.Buffer
-	runner := NewRunner(settings)
-	runner.Stdout = &stdout
-	runner.Stderr = &stderr
-
-	output, err := runner.Run(context.Background(), "streamed", 1)
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-	if output == "" {
-		t.Error("Expected non-empty output")
-	}
-}
-
 func TestRunner_Run_CancelledContext(t *testing.T) {
 	settings := &config.Settings{
 		Agent: config.AgentConfig{

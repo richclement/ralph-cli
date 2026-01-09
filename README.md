@@ -170,13 +170,13 @@ Ralph supports the following CLI LLM agents with automatic flag detection:
 
 ## Completion Detection
 
-Ralph looks for `<response>message</response>` tags in agent output:
+Ralph detects completion from the JSON result in stream-json mode. A match occurs if the result ends with `completionResponse` (case-insensitive).
 
-```
-<response>DONE</response>
-```
+Examples that match with default `completionResponse: "DONE"`:
+- `DONE`
+- `Task completed successfully. DONE`
 
-The match is case-insensitive. Completion is only checked when all guardrails pass.
+Completion is only checked when all guardrails pass.
 
 ## Architecture
 
