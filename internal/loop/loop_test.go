@@ -462,8 +462,8 @@ func TestRunner_Run_SuccessWithCompletionResponse(t *testing.T) {
 	}
 
 	runner := NewRunner(Options{
-		// Echo will output this prompt which contains the completion response
-		Prompt:   "<response>DONE</response>",
+		// Echo will output JSON result format that IsComplete expects
+		Prompt:   `{"type":"result","result":"DONE"}`,
 		Settings: settings,
 		Stdout:   &stdout,
 		Stderr:   &stderr,
@@ -529,7 +529,7 @@ func TestRunner_Run_WithGuardrails_AllPass(t *testing.T) {
 	_ = os.MkdirAll(".ralph", 0o755)
 
 	runner := NewRunner(Options{
-		Prompt:   "<response>DONE</response>",
+		Prompt:   `{"type":"result","result":"DONE"}`,
 		Settings: settings,
 		Stdout:   &stdout,
 		Stderr:   &stderr,
@@ -601,7 +601,7 @@ func TestRunner_Run_WithSCM(t *testing.T) {
 	}
 
 	runner := NewRunner(Options{
-		Prompt:   "<response>DONE</response>",
+		Prompt:   `{"type":"result","result":"DONE"}`,
 		Settings: settings,
 		Stdout:   &stdout,
 		Stderr:   &stderr,

@@ -30,7 +30,7 @@ Entry point: `cmd/ralph/main.go` - CLI parsing (kong), signal handling, orchestr
 
 Internal packages:
 - `config/` - Settings structs, JSON loading, deep merge of base/local configs, CLI override application
-- `loop/` - Main iteration loop, completion detection via `<response>DONE</response>` regex
+- `loop/` - Main iteration loop, completion detection via JSON result extraction
 - `agent/` - Agent command execution with auto-inferred non-REPL flags (-p for claude, e for codex, -x for amp)
 - `guardrail/` - Guardrail execution, fail actions (APPEND/PREPEND/REPLACE), output truncation, log file generation
 - `scm/` - SCM task runner; commit task prompts agent for commit message
@@ -45,7 +45,9 @@ Required: `agent.command` must be set in settings.
 
 ## Completion Detection
 
-Agent must output `<response>DONE</response>` (case-insensitive, configurable via `completionResponse`). Completion only checked after all guardrails pass.
+Completion is detected from the JSON result in stream-json mode. Agent output matches if result ends with `completionResponse` (case-insensitive).
+
+Default `completionResponse` is `DONE`. Completion only checked after all guardrails pass.
 
 ## Exit Codes
 

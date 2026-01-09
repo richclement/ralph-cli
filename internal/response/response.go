@@ -112,59 +112,24 @@ func ExtractFromJSON(output string) (string, bool) {
 }
 
 // IsComplete checks if agent output indicates completion.
-// For stream-json mode: checks JSON result first.
-// For text mode: falls back to <response> regex.
-// The match is case-insensitive.
+// Requires stream-json mode output with a {"type":"result"} message.
+// Matches if result ends with completionResponse (case-insensitive).
 func IsComplete(output, completionResponse string) bool {
 	debugf("IsComplete: checking for completionResponse=%q", completionResponse)
 
-	// Normalize completionResponse - if it's wrapped in <response> tags, extract the content
-	expectedContent := completionResponse
-	if extracted, found := ExtractResponse(completionResponse); found {
-		debugf("IsComplete: completionResponse contains <response> tag, using content=%q", extracted)
-		expectedContent = extracted
-	}
-
-	// Try JSON extraction first (stream-json mode)
-	if result, found := ExtractFromJSON(output); found {
-		debugf("IsComplete: ExtractFromJSON returned result (len=%d), found=%v", len(result), found)
-
-		// CAUSE 1: Direct comparison - check if result equals completion response
-		if strings.EqualFold(strings.TrimSpace(result), strings.TrimSpace(expectedContent)) {
-			debugf("IsComplete: direct match succeeded")
-			return true
-		}
-		debugf("IsComplete: direct match failed, result=%q vs expected=%q", lastN(result, 100), expectedContent)
-
-		// CAUSE 2: Result contains <response> tag - extract and compare
-		// This handles when the agent outputs <response>DONE</response> in its text,
-		// which ends up in the result field as part of a larger response.
-		if tagContent, tagFound := ExtractResponse(result); tagFound {
-			debugf("IsComplete: found <response> tag in result, content=%q", tagContent)
-			if strings.EqualFold(strings.TrimSpace(tagContent), strings.TrimSpace(expectedContent)) {
-				debugf("IsComplete: tag content match succeeded")
-				return true
-			}
-			debugf("IsComplete: tag content match failed, tagContent=%q vs expected=%q", tagContent, expectedContent)
-		} else {
-			debugf("IsComplete: no <response> tag found in result")
-		}
-
-		// JSON result was found but didn't match - don't fall back to raw output
-		debugf("IsComplete: JSON result found but no match, not falling back to raw output")
+	// Extract result from JSON (stream-json mode)
+	result, found := ExtractFromJSON(output)
+	if !found {
+		debugf("IsComplete: no JSON result found")
 		return false
 	}
 
-	debugf("IsComplete: ExtractFromJSON found nothing, trying raw output")
-
-	// Fall back to <response> regex only if no JSON result found (text mode)
-	if resp, found := ExtractResponse(output); found {
-		debugf("IsComplete: ExtractResponse (raw output) found=%v, content=%q", found, resp)
-		return strings.EqualFold(strings.TrimSpace(resp), strings.TrimSpace(expectedContent))
-	}
-
-	debugf("IsComplete: no completion detected")
-	return false
+	// Check if result ends with completion response (case-insensitive)
+	result = strings.TrimSpace(result)
+	expected := strings.TrimSpace(completionResponse)
+	match := strings.HasSuffix(strings.ToLower(result), strings.ToLower(expected))
+	debugf("IsComplete: ends-with check=%v", match)
+	return match
 }
 
 // lastN returns the last n characters of s, or s if shorter.
