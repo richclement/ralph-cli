@@ -159,6 +159,7 @@ The `ralph init` command interactively creates `.ralph/settings.json` by walking
 - Guardrails loop (0+):
   - `command` (empty input exits loop)
   - `failAction` (APPEND|PREPEND|REPLACE, case-normalized to uppercase)
+  - `hint` (optional, guidance text for agent on failure)
 - SCM setup (optional):
   - Prompt `"Configure SCM? (y/N):"` first
   - If yes: `scm.command`, `scm.tasks` (comma-separated)
@@ -184,8 +185,10 @@ Maximum iterations [10]:
 Completion response [DONE]:
 Add guardrail command (leave blank to finish): make lint
   Fail action (APPEND|PREPEND|REPLACE): APPEND
+  Hint (optional, guidance for agent on failure): Fix lint errors only. Do not change behavior.
 Add guardrail command (leave blank to finish): make test
   Fail action (APPEND|PREPEND|REPLACE): APPEND
+  Hint (optional, guidance for agent on failure):
 Add guardrail command (leave blank to finish):
 Configure SCM? (y/N): y
   SCM command (e.g., git): git
@@ -215,7 +218,12 @@ Example:
   },
   "guardrails": [
     {
-      "command": "./mvnw clean install -T 2C -q -e",
+      "command": "make lint",
+      "failAction": "APPEND",
+      "hint": "Fix lint errors only. Do not change behavior."
+    },
+    {
+      "command": "make test",
       "failAction": "APPEND"
     }
   ],
@@ -247,6 +255,7 @@ type AgentConfig struct {
 type Guardrail struct {
     Command    string `json:"command"`
     FailAction string `json:"failAction"` // APPEND, PREPEND, REPLACE
+    Hint       string `json:"hint,omitempty"` // Optional guidance for agent on failure
 }
 
 type SCMConfig struct {
@@ -357,6 +366,7 @@ If max iterations is reached without completion, exit non-zero (exit code 1).
 Each guardrail has:
 - `command`: shell command to run.
 - `failAction`: one of `APPEND`, `PREPEND`, `REPLACE`.
+- `hint` (optional): guidance text injected into the prompt when the guardrail fails.
 
 **Shell Execution:**
 - Unix (Linux, macOS): `sh -c "<command>"`
@@ -371,6 +381,19 @@ On failure:
   - Truncation keeps the first N characters and appends `... [truncated]`.
   - The indicator is only added when truncation actually occurs.
 - Print guardrail start/end, exit status, and fail action used.
+
+**Failure Message Format:**
+When a guardrail fails, the message sent to the agent includes:
+```
+Guardrail "<command>" failed with exit code <code>.
+Hint: <hint>
+Output file: <log-file>
+Output (truncated):
+<output>
+```
+
+The `Hint:` line is only included when a hint is configured. Hints are literal strings
+(no templating) and are never truncated; only guardrail output is truncated.
 
 **Log File Naming:**
 - Log files are named `./.ralph/guardrail_<iter>_<slug>.log`.

@@ -89,17 +89,18 @@ func TestRun_HappyPath(t *testing.T) {
 		defer mockTTY(true)()
 
 		// Input: agent command, flags, max iterations (default), completion (default),
-		// iteration count (default), one guardrail, exit guardrail loop, decline SCM
+		// iteration count (default), one guardrail with hint, exit guardrail loop, decline SCM
 		input := strings.Join([]string{
-			"claude",       // agent command
-			"--model,opus", // agent flags (comma-separated)
-			"",             // max iterations (use default 10)
-			"",             // completion response (use default DONE)
-			"",             // include iteration count (default false)
-			"make lint",    // guardrail command
-			"APPEND",       // fail action
-			"",             // exit guardrail loop
-			"N",            // don't configure SCM
+			"claude",                // agent command
+			"--model,opus",          // agent flags (comma-separated)
+			"",                      // max iterations (use default 10)
+			"",                      // completion response (use default DONE)
+			"",                      // include iteration count (default false)
+			"make lint",             // guardrail command
+			"APPEND",                // fail action
+			"Fix lint errors only.", // hint
+			"",                      // exit guardrail loop
+			"N",                     // don't configure SCM
 		}, "\n") + "\n"
 
 		withStdin(t, input, func() {
@@ -150,6 +151,9 @@ func TestRun_HappyPath(t *testing.T) {
 			}
 			if settings.Guardrails[0].FailAction != "APPEND" {
 				t.Errorf("guardrails[0].failAction = %q, want %q", settings.Guardrails[0].FailAction, "APPEND")
+			}
+			if settings.Guardrails[0].Hint != "Fix lint errors only." {
+				t.Errorf("guardrails[0].hint = %q, want %q", settings.Guardrails[0].Hint, "Fix lint errors only.")
 			}
 		}
 		if settings.SCM != nil {
@@ -537,6 +541,7 @@ func TestRun_InvalidFailAction_Reprompt(t *testing.T) {
 			"make lint", // guardrail command
 			"INVALID",   // invalid action - should reprompt
 			"APPEND",    // valid action
+			"",          // hint (empty)
 			"",          // exit guardrail loop
 			"N",         // no SCM
 		}, "\n") + "\n"
@@ -592,6 +597,7 @@ func TestRun_FailActionCaseNormalization(t *testing.T) {
 			"",          // default include iteration count
 			"make lint", // guardrail command
 			"append",    // lowercase - should be normalized
+			"",          // hint (empty)
 			"",          // exit guardrail loop
 			"N",         // no SCM
 		}, "\n") + "\n"
@@ -633,8 +639,10 @@ func TestRun_GuardrailLoopExit(t *testing.T) {
 			"",          // default include iteration count
 			"make lint", // first guardrail
 			"APPEND",
-			"make test", // second guardrail
+			"Fix lint errors.", // hint for first guardrail
+			"make test",        // second guardrail
 			"PREPEND",
+			"",  // hint for second guardrail (empty)
 			"",  // exit loop (empty command)
 			"N", // no SCM
 		}, "\n") + "\n"
