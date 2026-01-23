@@ -227,12 +227,17 @@ func (f *Formatter) displayToolResult(pending *PendingTool, e *Event, duration t
 		}
 	}
 
-	// Result header with stats
+	// Result header with tool name correlation
 	lines, chars := countLinesChars(output)
 	if isError {
 		sb.WriteString(f.red("Error"))
 	} else {
 		sb.WriteString(f.green("Result"))
+	}
+
+	// Show correlated tool name
+	if pending != nil && pending.Event != nil && pending.Event.ToolName != "" {
+		sb.WriteString(f.dim(" ← " + pending.Event.ToolName))
 	}
 
 	if output != "" {
@@ -352,15 +357,15 @@ func (f *Formatter) displayTodo(items []TodoItem) {
 		sb.WriteString("\n")
 	}
 
-	// Progress summary
+	// Progress summary with all counters
 	total := len(items)
 	pct := float64(completed) / float64(total) * 100
 	if f.config.UseEmoji {
-		sb.WriteString(f.dim(fmt.Sprintf("\n  %s Progress: %d/%d (%.0f%%)\n",
-			iconProgress, completed, total, pct)))
+		sb.WriteString(f.dim(fmt.Sprintf("\n  %s Progress: %d/%d (%.0f%%) | %d active, %d pending\n",
+			iconProgress, completed, total, pct, inProgress, pending)))
 	} else {
-		sb.WriteString(f.dim(fmt.Sprintf("\n  Progress: %d/%d (%.0f%%)\n",
-			completed, total, pct)))
+		sb.WriteString(f.dim(fmt.Sprintf("\n  Progress: %d/%d (%.0f%%) | %d active, %d pending\n",
+			completed, total, pct, inProgress, pending)))
 	}
 
 	fmt.Fprint(f.out, sb.String())
@@ -475,9 +480,4 @@ func truncateInput(s string, max int) string {
 		return s
 	}
 	return s[:max-3] + "..."
-}
-
-// firstLine extracts the first line and truncates if needed (kept for compatibility)
-func firstLine(s string, max int) string {
-	return truncateInput(s, max)
 }

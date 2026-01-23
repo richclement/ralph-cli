@@ -439,26 +439,112 @@ func TestFormatter_Timestamp(t *testing.T) {
 	}
 }
 
-func TestFirstLine(t *testing.T) {
-	tests := []struct {
-		input string
-		max   int
-		want  string
-	}{
-		{"short", 10, "short"},
-		{"first\nsecond", 20, "first"},
-		{"this is a very long string that should be truncated", 20, "this is a very lo..."},
-		{"multiline\nand long text that exceeds the maximum", 10, "multiline"},
-		{"", 10, ""},
-	}
+func TestFormatter_ToolEndNoEmoji(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: false}
+	f := NewFormatter(&buf, config)
 
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := firstLine(tt.input, tt.max)
-			if got != tt.want {
-				t.Errorf("firstLine(%q, %d) = %q, want %q", tt.input, tt.max, got, tt.want)
-			}
-		})
+	// Send tool start first for correlation
+	f.FormatEvent(&Event{
+		Type:      EventToolStart,
+		ToolName:  "Read",
+		ToolID:    "t1",
+		ToolInput: "/path/to/file.go",
+	})
+	buf.Reset()
+
+	// Successful result
+	f.FormatEvent(&Event{
+		Type:       EventToolEnd,
+		ToolID:     "t1",
+		ToolOutput: "package main",
+	})
+
+	got := buf.String()
+	if strings.Contains(got, "✅") {
+		t.Errorf("output should not have emoji when UseEmoji=false: %q", got)
+	}
+	if !strings.Contains(got, "[OK]") {
+		t.Errorf("output missing [OK] fallback: %q", got)
+	}
+	if !strings.Contains(got, "Result") {
+		t.Errorf("output missing Result: %q", got)
+	}
+}
+
+func TestFormatter_ToolEndErrorNoEmoji(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: false}
+	f := NewFormatter(&buf, config)
+
+	f.FormatEvent(&Event{
+		Type:      EventToolEnd,
+		ToolID:    "t1",
+		ToolError: "Permission denied",
+	})
+
+	got := buf.String()
+	if strings.Contains(got, "❌") {
+		t.Errorf("output should not have emoji when UseEmoji=false: %q", got)
+	}
+	if !strings.Contains(got, "[ERR]") {
+		t.Errorf("output missing [ERR] fallback: %q", got)
+	}
+	if !strings.Contains(got, "Error") {
+		t.Errorf("output missing Error: %q", got)
+	}
+}
+
+func TestFormatter_ToolCorrelationShowsToolName(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
+	f := NewFormatter(&buf, config)
+
+	// Tool start
+	f.FormatEvent(&Event{
+		Type:      EventToolStart,
+		ToolName:  "Read",
+		ToolID:    "tool_123",
+		ToolInput: "/path/to/file.go",
+	})
+	buf.Reset()
+
+	// Tool end with same ID
+	f.FormatEvent(&Event{
+		Type:       EventToolEnd,
+		ToolID:     "tool_123",
+		ToolOutput: "package main",
+	})
+
+	got := buf.String()
+	// Should show correlated tool name in result
+	if !strings.Contains(got, "← Read") {
+		t.Errorf("output missing correlated tool name: %q", got)
+	}
+}
+
+func TestFormatter_TodoShowsAllCounters(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
+	f := NewFormatter(&buf, config)
+
+	f.FormatEvent(&Event{
+		Type: EventTodo,
+		TodoItems: []TodoItem{
+			{Content: "Task 1", Status: "completed"},
+			{Content: "Task 2", Status: "in_progress"},
+			{Content: "Task 3", Status: "pending"},
+			{Content: "Task 4", Status: "pending"},
+		},
+	})
+
+	got := buf.String()
+	// Should show all counters: 1 active, 2 pending
+	if !strings.Contains(got, "1 active") {
+		t.Errorf("output missing active count: %q", got)
+	}
+	if !strings.Contains(got, "2 pending") {
+		t.Errorf("output missing pending count: %q", got)
 	}
 }
 
