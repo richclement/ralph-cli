@@ -129,3 +129,22 @@ func TestRunCmd_GetPrompt(t *testing.T) {
 		})
 	}
 }
+
+func TestRunExitCode_Error(t *testing.T) {
+	tests := []struct {
+		code     int
+		expected string
+	}{
+		{0, "exit code 0"},
+		{1, "exit code 1"},
+		{2, "exit code 2"},
+		{130, "exit code 130"},
+	}
+
+	for _, tt := range tests {
+		code := runExitCode(tt.code)
+		if code.Error() != tt.expected {
+			t.Errorf("runExitCode(%d).Error() = %q, want %q", tt.code, code.Error(), tt.expected)
+		}
+	}
+}

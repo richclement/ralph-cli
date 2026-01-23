@@ -170,6 +170,10 @@ func (c *RunCmd) Run() error {
 
 	exitCode := loopRunner.Run(runCtx)
 
+	// Only return an error for non-zero exit codes
+	if exitCode == 0 {
+		return nil
+	}
 	return runExitCode(exitCode)
 }
 
