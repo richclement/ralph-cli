@@ -258,3 +258,143 @@ func TestIsComplete_LongResult(t *testing.T) {
 		t.Error("IsComplete should detect DONE at end of long JSON result")
 	}
 }
+
+func TestExtractFromJSON_Codex(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+		found  bool
+	}{
+		{
+			name: "codex turn completed with agent_message",
+			output: `{"type":"thread.started","thread_id":"abc123"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"msg_1","type":"agent_message"}}
+{"type":"item.completed","item":{"id":"msg_1","type":"agent_message","text":"Task completed. DONE"}}
+{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}`,
+			want:  "Task completed. DONE",
+			found: true,
+		},
+		{
+			name: "codex turn completed without agent_message",
+			output: `{"type":"turn.started"}
+{"type":"item.started","item":{"id":"cmd_1","type":"command_execution","command":"ls"}}
+{"type":"item.completed","item":{"id":"cmd_1","type":"command_execution","exit_code":0}}
+{"type":"turn.completed","usage":{"input_tokens":50,"output_tokens":25}}`,
+			want:  "",
+			found: true,
+		},
+		{
+			name: "codex multiple agent_messages takes last",
+			output: `{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"msg_1","type":"agent_message","text":"First message"}}
+{"type":"item.completed","item":{"id":"msg_2","type":"agent_message","text":"Final response. DONE"}}
+{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":75}}`,
+			want:  "Final response. DONE",
+			found: true,
+		},
+		{
+			name: "codex no turn.completed - not complete",
+			output: `{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"msg_1","type":"agent_message","text":"Still working..."}}`,
+			want:  "",
+			found: false,
+		},
+		{
+			name: "codex reasoning item ignored",
+			output: `{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"rsn_1","type":"reasoning","text":"Thinking about this..."}}
+{"type":"item.completed","item":{"id":"msg_1","type":"agent_message","text":"Done thinking. DONE"}}
+{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}`,
+			want:  "Done thinking. DONE",
+			found: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, found := ExtractFromJSON(tt.output)
+			if found != tt.found {
+				t.Errorf("ExtractFromJSON() found = %v, want %v", found, tt.found)
+			}
+			if got != tt.want {
+				t.Errorf("ExtractFromJSON() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsComplete_Codex(t *testing.T) {
+	// Full Codex output with completion response
+	output := `{"type":"thread.started","thread_id":"abc123"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"msg_1","type":"agent_message","text":"I've completed the task. DONE"}}
+{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}`
+
+	if !IsComplete(output, "DONE") {
+		t.Error("IsComplete should detect DONE in Codex agent_message")
+	}
+
+	if !IsComplete(output, "done") {
+		t.Error("IsComplete should be case-insensitive for Codex")
+	}
+
+	if IsComplete(output, "FINISHED") {
+		t.Error("IsComplete should return false for non-matching completion")
+	}
+}
+
+func TestExtractFromJSON_Amp(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+		found  bool
+	}{
+		{
+			name:   "amp success result",
+			output: `{"type":"system","subtype":"init","session_id":"test"}` + "\n" + `{"type":"result","subtype":"success","result":"Task completed. DONE","duration_ms":1000}`,
+			want:   "Task completed. DONE",
+			found:  true,
+		},
+		{
+			name:   "amp error result",
+			output: `{"type":"result","subtype":"error_during_execution","error":"Command failed","is_error":true}`,
+			want:   "",
+			found:  true,
+		},
+		{
+			name:   "amp with assistant messages",
+			output: `{"type":"assistant","message":{"content":[{"type":"text","text":"Working on it..."}]}}` + "\n" + `{"type":"result","subtype":"success","result":"All done. DONE"}`,
+			want:   "All done. DONE",
+			found:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, found := ExtractFromJSON(tt.output)
+			if found != tt.found {
+				t.Errorf("ExtractFromJSON() found = %v, want %v", found, tt.found)
+			}
+			if got != tt.want {
+				t.Errorf("ExtractFromJSON() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsComplete_Amp(t *testing.T) {
+	output := `{"type":"system","subtype":"init","session_id":"test"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Let me help."}]}}
+{"type":"result","subtype":"success","result":"Task finished. DONE","duration_ms":500}`
+
+	if !IsComplete(output, "DONE") {
+		t.Error("IsComplete should detect DONE in Amp result")
+	}
+
+	if !IsComplete(output, "done") {
+		t.Error("IsComplete should be case-insensitive for Amp")
+	}
+}
