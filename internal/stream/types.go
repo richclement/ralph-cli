@@ -11,11 +11,20 @@ const (
 	EventText                       // Assistant text output
 	EventResult                     // Final result/completion
 	EventProgress                   // Cost update, status change
+	EventTodo                       // Task list update (TodoWrite)
 	EventUnknown                    // Unrecognized message (for debugging)
 )
 
 func (t EventType) String() string {
-	return [...]string{"ToolStart", "ToolEnd", "Text", "Result", "Progress", "Unknown"}[t]
+	return [...]string{"ToolStart", "ToolEnd", "Text", "Result", "Progress", "Todo", "Unknown"}[t]
+}
+
+// TodoItem represents a task in a todo list
+type TodoItem struct {
+	ID       string // Task identifier
+	Content  string // Task description
+	Status   string // "pending", "in_progress", "completed"
+	Priority string // "high", "medium", "low" (optional)
 }
 
 // Event represents a parsed agent output event (agent-agnostic)
@@ -40,6 +49,9 @@ type Event struct {
 	// Cost tracking
 	Cost      float64 // Cumulative cost at this point
 	CostDelta float64 // Cost of this specific operation
+
+	// Todo events
+	TodoItems []TodoItem // Task list items (for EventTodo)
 }
 
 // IsError returns true if this event represents a failure

@@ -8,18 +8,19 @@ import (
 
 func TestFormatter_ToolStart(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", UseColor: false}
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
 		Type:      EventToolStart,
 		ToolName:  "Read",
+		ToolID:    "t1",
 		ToolInput: "/path/to/file.go",
 	})
 
 	got := buf.String()
-	if !strings.Contains(got, "[claude]") {
-		t.Errorf("output missing prefix: %q", got)
+	if !strings.Contains(got, "⏺") {
+		t.Errorf("output missing tool start icon: %q", got)
 	}
 	if !strings.Contains(got, "Read") {
 		t.Errorf("output missing tool name: %q", got)
@@ -31,37 +32,63 @@ func TestFormatter_ToolStart(t *testing.T) {
 
 func TestFormatter_ToolStartNoInput(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", UseColor: false}
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
 		Type:     EventToolStart,
 		ToolName: "Read",
+		ToolID:   "t1",
 	})
 
 	got := buf.String()
 	if !strings.Contains(got, "Read") {
 		t.Errorf("output missing tool name: %q", got)
 	}
-	// Should not have ": " when no input
-	if strings.Contains(got, ": ") {
-		t.Errorf("output should not have colon for empty input: %q", got)
+	// Should not have parentheses when no input
+	if strings.Contains(got, "(") {
+		t.Errorf("output should not have parentheses for empty input: %q", got)
+	}
+}
+
+func TestFormatter_ToolStartNoEmoji(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: false}
+	f := NewFormatter(&buf, config)
+
+	f.FormatEvent(&Event{
+		Type:      EventToolStart,
+		ToolName:  "Read",
+		ToolID:    "t1",
+		ToolInput: "/path/to/file.go",
+	})
+
+	got := buf.String()
+	if strings.Contains(got, "⏺") {
+		t.Errorf("output should not have emoji when UseEmoji=false: %q", got)
+	}
+	if !strings.Contains(got, "Read") {
+		t.Errorf("output missing tool name: %q", got)
 	}
 }
 
 func TestFormatter_Error(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", UseColor: false}
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
 		Type:      EventToolEnd,
+		ToolID:    "t1",
 		ToolError: "Permission denied",
 	})
 
 	got := buf.String()
-	if !strings.Contains(got, "ERROR") {
-		t.Errorf("output missing ERROR: %q", got)
+	if !strings.Contains(got, "❌") {
+		t.Errorf("output missing error icon: %q", got)
+	}
+	if !strings.Contains(got, "Error") {
+		t.Errorf("output missing Error: %q", got)
 	}
 	if !strings.Contains(got, "Permission denied") {
 		t.Errorf("output missing error message: %q", got)
@@ -70,42 +97,77 @@ func TestFormatter_Error(t *testing.T) {
 
 func TestFormatter_ToolEndNoError(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", UseColor: false, Verbose: false}
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true, Verbose: false}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
 		Type:       EventToolEnd,
-		ToolOutput: "some output",
+		ToolID:     "t1",
+		ToolOutput: "",
 	})
 
-	// Non-verbose mode should not show output for successful tool
+	// Non-verbose mode with empty output should not show anything
 	if buf.Len() > 0 {
-		t.Errorf("expected no output for non-error tool end in non-verbose mode, got: %q", buf.String())
+		t.Errorf("expected no output for empty successful tool end in non-verbose mode, got: %q", buf.String())
 	}
 }
 
-func TestFormatter_ToolEndVerbose(t *testing.T) {
+func TestFormatter_ToolEndWithOutput(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", UseColor: false, Verbose: true}
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true, Verbose: false}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
 		Type:       EventToolEnd,
+		ToolID:     "t1",
 		ToolOutput: "file contents here",
 	})
 
 	got := buf.String()
-	if !strings.Contains(got, "->") {
-		t.Errorf("verbose output missing arrow: %q", got)
+	if !strings.Contains(got, "✅") {
+		t.Errorf("output missing success icon: %q", got)
+	}
+	if !strings.Contains(got, "Result") {
+		t.Errorf("output missing Result: %q", got)
 	}
 	if !strings.Contains(got, "file contents here") {
-		t.Errorf("verbose output missing tool output: %q", got)
+		t.Errorf("output missing tool output: %q", got)
+	}
+}
+
+func TestFormatter_ToolCorrelation(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
+	f := NewFormatter(&buf, config)
+
+	// Tool start
+	f.FormatEvent(&Event{
+		Type:      EventToolStart,
+		ToolName:  "Read",
+		ToolID:    "tool_123",
+		ToolInput: "/path/to/file.go",
+	})
+
+	// Tool end with same ID
+	f.FormatEvent(&Event{
+		Type:       EventToolEnd,
+		ToolID:     "tool_123",
+		ToolOutput: "package main",
+	})
+
+	got := buf.String()
+	// Should show both start and result
+	if !strings.Contains(got, "⏺") {
+		t.Errorf("output missing tool start: %q", got)
+	}
+	if !strings.Contains(got, "✅") {
+		t.Errorf("output missing tool result: %q", got)
 	}
 }
 
 func TestFormatter_Result(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", UseColor: false}
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
@@ -120,11 +182,40 @@ func TestFormatter_Result(t *testing.T) {
 	if !strings.Contains(got, "0.0234") {
 		t.Errorf("output missing cost: %q", got)
 	}
+	if !strings.Contains(got, "tools:") {
+		t.Errorf("output missing tools count: %q", got)
+	}
+}
+
+func TestFormatter_ResultWithStats(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
+	f := NewFormatter(&buf, config)
+
+	// Simulate some tool activity
+	f.FormatEvent(&Event{Type: EventToolStart, ToolName: "Read", ToolID: "t1"})
+	f.FormatEvent(&Event{Type: EventToolEnd, ToolID: "t1", ToolOutput: "ok"})
+	f.FormatEvent(&Event{Type: EventToolStart, ToolName: "Edit", ToolID: "t2"})
+	f.FormatEvent(&Event{Type: EventToolEnd, ToolID: "t2", ToolError: "failed"})
+
+	buf.Reset()
+	f.FormatEvent(&Event{
+		Type: EventResult,
+		Cost: 0.05,
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "tools: 2") {
+		t.Errorf("output should show tools: 2, got: %q", got)
+	}
+	if !strings.Contains(got, "errors: 1") {
+		t.Errorf("output should show errors: 1, got: %q", got)
+	}
 }
 
 func TestFormatter_Text(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", ShowText: true, UseColor: false}
+	config := FormatterConfig{AgentName: "claude", ShowText: true, UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
@@ -140,7 +231,7 @@ func TestFormatter_Text(t *testing.T) {
 
 func TestFormatter_TextDisabled(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", ShowText: false, UseColor: false}
+	config := FormatterConfig{AgentName: "claude", ShowText: false, UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
@@ -155,7 +246,7 @@ func TestFormatter_TextDisabled(t *testing.T) {
 
 func TestFormatter_TextMultiline(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", ShowText: true, UseColor: false}
+	config := FormatterConfig{AgentName: "claude", ShowText: true, UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
@@ -169,9 +260,63 @@ func TestFormatter_TextMultiline(t *testing.T) {
 	}
 }
 
+func TestFormatter_Todo(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
+	f := NewFormatter(&buf, config)
+
+	f.FormatEvent(&Event{
+		Type: EventTodo,
+		TodoItems: []TodoItem{
+			{Content: "Read the file", Status: "completed"},
+			{Content: "Edit the code", Status: "in_progress"},
+			{Content: "Run tests", Status: "pending"},
+		},
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "Todo List") {
+		t.Errorf("output missing Todo List header: %q", got)
+	}
+	if !strings.Contains(got, "Read the file") {
+		t.Errorf("output missing completed task: %q", got)
+	}
+	if !strings.Contains(got, "Edit the code") {
+		t.Errorf("output missing in_progress task: %q", got)
+	}
+	if !strings.Contains(got, "ACTIVE") {
+		t.Errorf("output missing ACTIVE marker: %q", got)
+	}
+	if !strings.Contains(got, "Progress:") {
+		t.Errorf("output missing progress summary: %q", got)
+	}
+}
+
+func TestFormatter_TodoNoEmoji(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: false}
+	f := NewFormatter(&buf, config)
+
+	f.FormatEvent(&Event{
+		Type: EventTodo,
+		TodoItems: []TodoItem{
+			{Content: "Task 1", Status: "completed"},
+			{Content: "Task 2", Status: "pending"},
+		},
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "[x]") {
+		t.Errorf("output missing [x] for completed: %q", got)
+	}
+	if !strings.Contains(got, "[ ]") {
+		t.Errorf("output missing [ ] for pending: %q", got)
+	}
+}
+
 func TestFormatter_Progress(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", ShowProgress: true, UseColor: false}
+	config := FormatterConfig{AgentName: "claude", ShowProgress: true, UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
@@ -187,7 +332,7 @@ func TestFormatter_Progress(t *testing.T) {
 
 func TestFormatter_ProgressDisabled(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", ShowProgress: false, UseColor: false}
+	config := FormatterConfig{AgentName: "claude", ShowProgress: false, UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(&Event{
@@ -202,7 +347,7 @@ func TestFormatter_ProgressDisabled(t *testing.T) {
 
 func TestFormatter_NilEvent(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", UseColor: false}
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	f.FormatEvent(nil)
@@ -214,7 +359,7 @@ func TestFormatter_NilEvent(t *testing.T) {
 
 func TestFormatter_ConcurrentWrites(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", UseColor: false}
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
 	f := NewFormatter(&buf, config)
 
 	// Simulate concurrent writes
@@ -226,6 +371,7 @@ func TestFormatter_ConcurrentWrites(t *testing.T) {
 				f.FormatEvent(&Event{
 					Type:      EventToolStart,
 					ToolName:  "Read",
+					ToolID:    "t1",
 					ToolInput: "/path",
 				})
 			}
@@ -243,6 +389,56 @@ func TestFormatter_ConcurrentWrites(t *testing.T) {
 	}
 }
 
+func TestFormatter_TruncatedOutput(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{
+		AgentName:      "claude",
+		UseColor:       false,
+		UseEmoji:       true,
+		MaxOutputLines: 2,
+		MaxOutputChars: 50,
+	}
+	f := NewFormatter(&buf, config)
+
+	f.FormatEvent(&Event{
+		Type:       EventToolEnd,
+		ToolID:     "t1",
+		ToolOutput: "line1\nline2\nline3\nline4\nline5",
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "line1") {
+		t.Errorf("output missing first line: %q", got)
+	}
+	if !strings.Contains(got, "more lines") {
+		t.Errorf("output missing truncation indicator: %q", got)
+	}
+}
+
+func TestFormatter_Timestamp(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{
+		AgentName:     "claude",
+		UseColor:      false,
+		UseEmoji:      true,
+		ShowTimestamp: true,
+	}
+	f := NewFormatter(&buf, config)
+
+	f.FormatEvent(&Event{
+		Type:      EventToolStart,
+		ToolName:  "Read",
+		ToolID:    "t1",
+		ToolInput: "/path/to/file.go",
+	})
+
+	got := buf.String()
+	// Should contain a timestamp like [HH:MM:SS]
+	if !strings.Contains(got, "[") || !strings.Contains(got, ":") {
+		t.Errorf("output missing timestamp: %q", got)
+	}
+}
+
 func TestFirstLine(t *testing.T) {
 	tests := []struct {
 		input string
@@ -252,7 +448,7 @@ func TestFirstLine(t *testing.T) {
 		{"short", 10, "short"},
 		{"first\nsecond", 20, "first"},
 		{"this is a very long string that should be truncated", 20, "this is a very lo..."},
-		{"multiline\nand long text that exceeds the maximum", 10, "multiline"}, // 9 chars, under limit
+		{"multiline\nand long text that exceeds the maximum", 10, "multiline"},
 		{"", 10, ""},
 	}
 
@@ -261,6 +457,31 @@ func TestFirstLine(t *testing.T) {
 			got := firstLine(tt.input, tt.max)
 			if got != tt.want {
 				t.Errorf("firstLine(%q, %d) = %q, want %q", tt.input, tt.max, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCountLinesChars(t *testing.T) {
+	tests := []struct {
+		input     string
+		wantLines int
+		wantChars int
+	}{
+		{"", 0, 0},
+		{"hello", 1, 5},
+		{"line1\nline2", 2, 11},
+		{"a\nb\nc", 3, 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			lines, chars := countLinesChars(tt.input)
+			if lines != tt.wantLines {
+				t.Errorf("countLinesChars(%q) lines = %d, want %d", tt.input, lines, tt.wantLines)
+			}
+			if chars != tt.wantChars {
+				t.Errorf("countLinesChars(%q) chars = %d, want %d", tt.input, chars, tt.wantChars)
 			}
 		})
 	}
@@ -280,5 +501,37 @@ func TestDefaultFormatterConfig(t *testing.T) {
 	}
 	if config.Verbose {
 		t.Error("Verbose should default to false")
+	}
+	if !config.UseEmoji {
+		t.Error("UseEmoji should default to true")
+	}
+	if config.MaxOutputLines != 3 {
+		t.Errorf("MaxOutputLines = %d, want 3", config.MaxOutputLines)
+	}
+	if config.MaxOutputChars != 120 {
+		t.Errorf("MaxOutputChars = %d, want 120", config.MaxOutputChars)
+	}
+}
+
+func TestTruncateInput(t *testing.T) {
+	tests := []struct {
+		input string
+		max   int
+		want  string
+	}{
+		{"short", 10, "short"},
+		{"exactly10!", 10, "exactly10!"},
+		{"this is a longer string", 10, "this is..."},
+		{"first\nsecond", 20, "first"},
+		{"", 5, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := truncateInput(tt.input, tt.max)
+			if got != tt.want {
+				t.Errorf("truncateInput(%q, %d) = %q, want %q", tt.input, tt.max, got, tt.want)
+			}
+		})
 	}
 }

@@ -206,7 +206,7 @@ func TestProcessor_ToolStartEnd(t *testing.T) {
 
 func TestProcessor_ToolError(t *testing.T) {
 	var buf bytes.Buffer
-	config := FormatterConfig{AgentName: "claude", UseColor: false}
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
 	formatter := NewFormatter(&buf, config)
 
 	proc := NewProcessor("claude", formatter, nil, nil)
@@ -219,8 +219,12 @@ func TestProcessor_ToolError(t *testing.T) {
 	_ = proc.Close()
 
 	output := buf.String()
-	if !strings.Contains(output, "ERROR") {
-		t.Errorf("output missing ERROR: %q", output)
+	// New format uses "Error" header with ❌ icon
+	if !strings.Contains(output, "Error") {
+		t.Errorf("output missing Error: %q", output)
+	}
+	if !strings.Contains(output, "❌") {
+		t.Errorf("output missing error icon: %q", output)
 	}
 	if !strings.Contains(output, "Permission denied") {
 		t.Errorf("output missing error message: %q", output)
