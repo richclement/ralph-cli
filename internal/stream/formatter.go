@@ -169,6 +169,8 @@ func (f *Formatter) displayToolStart(e *Event) {
 	// Icon
 	if f.config.UseEmoji {
 		sb.WriteString(f.cyan(iconToolStart + " "))
+	} else {
+		sb.WriteString(f.cyan("> "))
 	}
 
 	// Tool name and primary arg
@@ -216,6 +218,12 @@ func (f *Formatter) displayToolResult(pending *PendingTool, e *Event, duration t
 			sb.WriteString(f.red(icon + " "))
 		} else {
 			sb.WriteString(f.green(icon + " "))
+		}
+	} else {
+		if isError {
+			sb.WriteString(f.red("[ERR] "))
+		} else {
+			sb.WriteString(f.green("[OK] "))
 		}
 	}
 
@@ -271,6 +279,8 @@ func (f *Formatter) displayCompletion(e *Event) {
 
 	if f.config.UseEmoji {
 		sb.WriteString(f.green(iconSuccess + " "))
+	} else {
+		sb.WriteString(f.green("[OK] "))
 	}
 
 	sb.WriteString(f.green("Complete"))
@@ -386,6 +396,8 @@ func (f *Formatter) appendTruncatedOutput(sb *strings.Builder, output string, is
 		sb.WriteString("  ")
 		if f.config.UseEmoji {
 			sb.WriteString(f.dim(iconContinue + "  "))
+		} else {
+			sb.WriteString(f.dim("|  "))
 		}
 		sb.WriteString(style(first))
 		sb.WriteString("\n")
@@ -410,6 +422,8 @@ func (f *Formatter) appendTruncatedOutput(sb *strings.Builder, output string, is
 		sb.WriteString("  ")
 		if f.config.UseEmoji {
 			sb.WriteString(f.dim(iconContinue + "  "))
+		} else {
+			sb.WriteString(f.dim("|  "))
 		}
 		sb.WriteString(f.dim(fmt.Sprintf("... %d more lines", remaining)))
 		sb.WriteString("\n")
