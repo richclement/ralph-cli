@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFormatter_ToolStart(t *testing.T) {
@@ -179,7 +180,7 @@ func TestFormatter_Result(t *testing.T) {
 	if !strings.Contains(got, "Complete") {
 		t.Errorf("output missing Complete: %q", got)
 	}
-	if !strings.Contains(got, "0.0234") {
+	if !strings.Contains(got, "$0.02") {
 		t.Errorf("output missing cost: %q", got)
 	}
 	if !strings.Contains(got, "tools:") {
@@ -596,6 +597,123 @@ func TestDefaultFormatterConfig(t *testing.T) {
 	}
 	if config.MaxOutputChars != 120 {
 		t.Errorf("MaxOutputChars = %d, want 120", config.MaxOutputChars)
+	}
+}
+
+func TestFormatter_ResultWithTokens(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
+	f := NewFormatter(&buf, config)
+
+	f.FormatEvent(&Event{
+		Type:            EventResult,
+		Cost:            5.76,
+		InputTokens:     1234567,
+		OutputTokens:    45000,
+		CacheReadTokens: 850000,
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "1.2M in") {
+		t.Errorf("output missing formatted input tokens: %q", got)
+	}
+	if !strings.Contains(got, "850K cached") {
+		t.Errorf("output missing cached tokens: %q", got)
+	}
+	if !strings.Contains(got, "45K out") {
+		t.Errorf("output missing output tokens: %q", got)
+	}
+}
+
+func TestFormatter_ResultNoCache(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
+	f := NewFormatter(&buf, config)
+
+	f.FormatEvent(&Event{
+		Type:         EventResult,
+		Cost:         0.05,
+		InputTokens:  25000,
+		OutputTokens: 673,
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "25K in") {
+		t.Errorf("output missing input tokens: %q", got)
+	}
+	if strings.Contains(got, "cached") {
+		t.Errorf("output should not have cached when cache is 0: %q", got)
+	}
+	if !strings.Contains(got, "673 out") {
+		t.Errorf("output missing output tokens: %q", got)
+	}
+}
+
+func TestFormatter_ResultNoTokens(t *testing.T) {
+	var buf bytes.Buffer
+	config := FormatterConfig{AgentName: "claude", UseColor: false, UseEmoji: true}
+	f := NewFormatter(&buf, config)
+
+	f.FormatEvent(&Event{
+		Type: EventResult,
+		Cost: 0.05,
+	})
+
+	got := buf.String()
+	if strings.Contains(got, "tokens:") {
+		t.Errorf("output should not have tokens when both are 0: %q", got)
+	}
+}
+
+func TestFormatTokenCount(t *testing.T) {
+	tests := []struct {
+		input int64
+		want  string
+	}{
+		{0, "0"},
+		{500, "500"},
+		{999, "999"},
+		{1000, "1K"},
+		{1500, "2K"},
+		{25000, "25K"},
+		{999999, "1000K"},
+		{1000000, "1.0M"},
+		{1234567, "1.2M"},
+		{2500000, "2.5M"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got := formatTokenCount(tt.input)
+			if got != tt.want {
+				t.Errorf("formatTokenCount(%d) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		input time.Duration
+		want  string
+	}{
+		{0, "0s"},
+		{5 * time.Second, "5s"},
+		{59 * time.Second, "59s"},
+		{60 * time.Second, "1m"},
+		{61 * time.Second, "1m1s"},
+		{90 * time.Second, "1m30s"},
+		{120 * time.Second, "2m"},
+		{367 * time.Second, "6m7s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got := formatDuration(tt.input)
+			if got != tt.want {
+				t.Errorf("formatDuration(%v) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 

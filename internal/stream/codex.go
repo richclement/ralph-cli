@@ -165,7 +165,9 @@ func (p *CodexParser) parseTurnCompleted(usage *codexUsage, now time.Time) ([]*E
 	}
 
 	if usage != nil {
-		event.Result = fmt.Sprintf("tokens: %d in, %d out", usage.InputTokens, usage.OutputTokens)
+		event.InputTokens = int64(usage.InputTokens)
+		event.OutputTokens = int64(usage.OutputTokens)
+		event.CacheReadTokens = int64(usage.CachedInputTokens)
 	}
 
 	return []*Event{event}, nil

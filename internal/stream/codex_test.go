@@ -201,8 +201,14 @@ func TestCodexParser_TurnCompleted(t *testing.T) {
 	if !e.IsComplete {
 		t.Error("expected IsComplete = true")
 	}
-	if e.Result != "tokens: 25030 in, 673 out" {
-		t.Errorf("Result = %q, want %q", e.Result, "tokens: 25030 in, 673 out")
+	if e.InputTokens != 25030 {
+		t.Errorf("InputTokens = %d, want 25030", e.InputTokens)
+	}
+	if e.OutputTokens != 673 {
+		t.Errorf("OutputTokens = %d, want 673", e.OutputTokens)
+	}
+	if e.CacheReadTokens != 21760 {
+		t.Errorf("CacheReadTokens = %d, want 21760", e.CacheReadTokens)
 	}
 }
 
