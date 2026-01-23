@@ -322,3 +322,116 @@ func TestClaudeParser_NilMessage(t *testing.T) {
 		t.Errorf("expected nil events for nil message, got %v", events)
 	}
 }
+
+func TestClaudeParser_TodoWrite(t *testing.T) {
+	p := NewClaudeParser()
+
+	input := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"TodoWrite","input":{"todos":[{"id":"1","content":"Read file","status":"completed"},{"id":"2","content":"Edit code","status":"in_progress"},{"id":"3","content":"Run tests","status":"pending","priority":"high"}]}}]}}`
+
+	events, err := p.Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+
+	e := events[0]
+	if e.Type != EventTodo {
+		t.Errorf("Type = %v, want EventTodo", e.Type)
+	}
+
+	if len(e.TodoItems) != 3 {
+		t.Fatalf("got %d todo items, want 3", len(e.TodoItems))
+	}
+
+	// Check first item
+	if e.TodoItems[0].Content != "Read file" {
+		t.Errorf("TodoItems[0].Content = %q, want %q", e.TodoItems[0].Content, "Read file")
+	}
+	if e.TodoItems[0].Status != "completed" {
+		t.Errorf("TodoItems[0].Status = %q, want %q", e.TodoItems[0].Status, "completed")
+	}
+
+	// Check second item
+	if e.TodoItems[1].Status != "in_progress" {
+		t.Errorf("TodoItems[1].Status = %q, want %q", e.TodoItems[1].Status, "in_progress")
+	}
+
+	// Check third item with priority
+	if e.TodoItems[2].Priority != "high" {
+		t.Errorf("TodoItems[2].Priority = %q, want %q", e.TodoItems[2].Priority, "high")
+	}
+}
+
+func TestClaudeParser_TodoWriteSubject(t *testing.T) {
+	p := NewClaudeParser()
+
+	// TodoWrite with "subject" field instead of "content"
+	input := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"TodoWrite","input":{"todos":[{"id":"1","subject":"Task with subject","status":"pending"}]}}]}}`
+
+	events, err := p.Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+
+	e := events[0]
+	if e.Type != EventTodo {
+		t.Errorf("Type = %v, want EventTodo", e.Type)
+	}
+
+	if e.TodoItems[0].Content != "Task with subject" {
+		t.Errorf("TodoItems[0].Content = %q, want %q", e.TodoItems[0].Content, "Task with subject")
+	}
+}
+
+func TestClaudeParser_TodoWriteEmpty(t *testing.T) {
+	p := NewClaudeParser()
+
+	// TodoWrite with empty todos
+	input := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"TodoWrite","input":{"todos":[]}}]}}`
+
+	events, err := p.Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	// Empty todos should produce no events
+	if len(events) != 0 {
+		t.Errorf("expected 0 events for empty todos, got %d", len(events))
+	}
+}
+
+func TestGetString(t *testing.T) {
+	m := map[string]any{
+		"str":    "value",
+		"num":    42,
+		"empty":  "",
+		"nested": map[string]any{"key": "nested"},
+	}
+
+	tests := []struct {
+		key  string
+		want string
+	}{
+		{"str", "value"},
+		{"num", ""},
+		{"empty", ""},
+		{"missing", ""},
+		{"nested", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			got := getString(m, tt.key)
+			if got != tt.want {
+				t.Errorf("getString(m, %q) = %q, want %q", tt.key, got, tt.want)
+			}
+		})
+	}
+}

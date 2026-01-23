@@ -21,15 +21,15 @@ type claudeMessage struct {
 }
 
 type claudeContent struct {
-	Type      string                 `json:"type"`
-	ID        string                 `json:"id,omitempty"`
-	ToolUseID string                 `json:"tool_use_id,omitempty"`
-	Name      string                 `json:"name,omitempty"`
-	Text      string                 `json:"text,omitempty"`
-	Content   string                 `json:"content,omitempty"`
-	Input     map[string]interface{} `json:"input,omitempty"`
-	IsError   bool                   `json:"is_error,omitempty"`
-	Error     string                 `json:"error,omitempty"`
+	Type      string         `json:"type"`
+	ID        string         `json:"id,omitempty"`
+	ToolUseID string         `json:"tool_use_id,omitempty"`
+	Name      string         `json:"name,omitempty"`
+	Text      string         `json:"text,omitempty"`
+	Content   string         `json:"content,omitempty"`
+	Input     map[string]any `json:"input,omitempty"`
+	IsError   bool           `json:"is_error,omitempty"`
+	Error     string         `json:"error,omitempty"`
 }
 
 // ClaudeParser implements Parser for Claude Code stream-json
@@ -98,6 +98,14 @@ func (p *ClaudeParser) parseAssistant(raw *claudeRawMessage, now time.Time) ([]*
 	for _, c := range raw.Message.Content {
 		switch c.Type {
 		case "tool_use":
+			// Handle TodoWrite specially - emit EventTodo instead of tool events
+			if c.Name == "TodoWrite" {
+				if todoEvent := parseTodoWrite(c.Input, now); todoEvent != nil {
+					events = append(events, todoEvent)
+				}
+				continue
+			}
+
 			p.activeTools[c.ID] = now
 			events = append(events, &Event{
 				Type:      EventToolStart,
@@ -117,6 +125,53 @@ func (p *ClaudeParser) parseAssistant(raw *claudeRawMessage, now time.Time) ([]*
 		}
 	}
 	return events, nil
+}
+
+// parseTodoWrite extracts todo items from a TodoWrite tool call
+func parseTodoWrite(input map[string]any, now time.Time) *Event {
+	todos, ok := input["todos"].([]any)
+	if !ok || len(todos) == 0 {
+		return nil
+	}
+
+	var items []TodoItem
+	for _, t := range todos {
+		m, ok := t.(map[string]any)
+		if !ok {
+			continue
+		}
+		item := TodoItem{
+			ID:       getString(m, "id"),
+			Content:  getString(m, "content"),
+			Status:   getString(m, "status"),
+			Priority: getString(m, "priority"),
+		}
+		// Fallback: use "subject" if "content" is empty
+		if item.Content == "" {
+			item.Content = getString(m, "subject")
+		}
+		if item.Content != "" {
+			items = append(items, item)
+		}
+	}
+
+	if len(items) == 0 {
+		return nil
+	}
+
+	return &Event{
+		Type:      EventTodo,
+		Timestamp: now,
+		TodoItems: items,
+	}
+}
+
+// getString safely extracts a string from a map
+func getString(m map[string]any, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
 }
 
 func (p *ClaudeParser) parseToolResult(raw *claudeRawMessage, now time.Time) ([]*Event, error) {
@@ -157,7 +212,7 @@ func (p *ClaudeParser) parseToolResult(raw *claudeRawMessage, now time.Time) ([]
 }
 
 // extractToolInput summarizes tool input for display
-func extractToolInput(name string, input map[string]interface{}) string {
+func extractToolInput(name string, input map[string]any) string {
 	switch name {
 	case "Read":
 		if path, ok := input["file_path"].(string); ok {

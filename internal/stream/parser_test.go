@@ -112,6 +112,7 @@ func TestEventTypeString(t *testing.T) {
 		{EventText, "Text"},
 		{EventResult, "Result"},
 		{EventProgress, "Progress"},
+		{EventTodo, "Todo"},
 		{EventUnknown, "Unknown"},
 	}
 
