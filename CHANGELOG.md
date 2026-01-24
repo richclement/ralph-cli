@@ -49,3 +49,10 @@
 ### Fixed
 
 - Error where error code would be output when the Ralph loop completed successfully
+
+## 0.6.0 - 2025-01-24
+
+### Added
+
+- Added support for the Rule of 5 by Jeffrey Emanuel. Can now configure code reviews as guardrails for Ralph.
+- Added support to `ralph init` to configure your review guardrails.
