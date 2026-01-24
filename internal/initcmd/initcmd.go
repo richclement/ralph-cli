@@ -435,12 +435,19 @@ func promptReviewPrompts(reader *bufio.Reader) ([]config.ReviewPrompt, error) {
 		fmt.Printf("    %s:\n      %s\n", p.Name, p.Prompt)
 	}
 
-	useDefaults, err := promptWithDefault(reader, "  Use default review prompts?", "Y")
+	fmt.Print("  Use default review prompts? [Y/n]: ")
+	line, err := reader.ReadString('\n')
 	if err != nil {
+		if err == io.EOF {
+			fmt.Println("\nAborted.")
+			exitFunc(130)
+			return nil, nil
+		}
 		return nil, err
 	}
+	useDefaults := strings.TrimSpace(line)
 
-	if strings.ToLower(useDefaults) == "y" {
+	if useDefaults == "" || strings.ToLower(useDefaults) == "y" {
 		return config.DefaultReviewPrompts(), nil
 	}
 
