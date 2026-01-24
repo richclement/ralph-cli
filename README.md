@@ -227,7 +227,7 @@ Review cycles implement the "Rule of 5" concept: forcing agents to review their 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `reviewAfter` | `0` | Iterations between review cycles (0 = disabled) |
-| `guardrailRetryLimit` | `0` | Max retries per review prompt when guardrails fail |
+| `guardrailRetryLimit` | `0` | Max retries per review prompt when guardrails fail (0 = run once, no retries) |
 | `prompts` | (4 defaults) | Custom review prompts (omit for defaults, empty `[]` disables) |
 
 **Default Prompts** (used when `prompts` is omitted):

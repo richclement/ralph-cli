@@ -205,7 +205,7 @@ work multiple times from different angles leads to significantly better output.
 | Field | Description |
 |-------|-------------|
 | `reviewAfter` | Iterations between review cycles (0 = disabled) |
-| `guardrailRetryLimit` | Max retries per review prompt when guardrails fail |
+| `guardrailRetryLimit` | Max retries per review prompt when guardrails fail (0 = run once, no retries) |
 | `prompts` | Array of review prompts (omit for defaults, empty `[]` disables) |
 
 ### Default Prompts

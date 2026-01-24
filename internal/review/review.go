@@ -64,9 +64,11 @@ func (r *Runner) Run(ctx context.Context, iteration int) (Stats, error) {
 		r.print("[Review: %s] Starting", reviewPrompt.Name)
 
 		currentPrompt := reviewPrompt.Prompt
-		var retries int
+		retries := 0
+		guardrailsPassed := false
 
-		for {
+		// Retry loop: run agent + guardrails until guardrails pass or retry limit reached
+		for !guardrailsPassed {
 			// Run agent with review prompt
 			r.log("Running agent with review prompt: %s", reviewPrompt.Name)
 			_, err := r.agentRunner.Run(ctx, currentPrompt, iteration)
@@ -80,36 +82,37 @@ func (r *Runner) Run(ctx context.Context, iteration int) (Stats, error) {
 			}
 
 			// Run guardrails if configured
-			if len(r.settings.Guardrails) > 0 {
-				results := r.guardrailRunner.RunAll(ctx, r.settings.Guardrails, iteration)
-
-				if !guardrail.AllPassed(results) {
-					stats.GuardrailFails++
-					retries++
-					stats.TotalRetries++
-
-					if retries >= retryLimit {
-						r.print("[Review: %s] Guardrail retry limit (%d) reached, moving to next review", reviewPrompt.Name, retryLimit)
-						break
-					}
-
-					// Inject guardrail failures into the review prompt
-					failedResults := guardrail.GetFailedResults(results)
-					for _, result := range failedResults {
-						failureMessage := guardrail.FormatFailureMessage(result, r.settings.OutputTruncateChars)
-						currentPrompt = guardrail.ApplyFailAction(currentPrompt, failureMessage, result.Guardrail.FailAction)
-					}
-
-					r.log("[Review: %s] Guardrails failed, retry %d/%d", reviewPrompt.Name, retries, retryLimit)
-					continue
-				}
-				r.print("[Review: %s] Guardrails passed", reviewPrompt.Name)
+			if len(r.settings.Guardrails) == 0 {
+				guardrailsPassed = true
+				break
 			}
 
-			// Guardrails passed (or no guardrails), move to next review prompt
-			r.print("[Review: %s] Complete", reviewPrompt.Name)
-			break
+			results := r.guardrailRunner.RunAll(ctx, r.settings.Guardrails, iteration)
+
+			if guardrail.AllPassed(results) {
+				guardrailsPassed = true
+				r.print("[Review: %s] Guardrails passed", reviewPrompt.Name)
+				break
+			}
+
+			// Guardrails failed
+			stats.GuardrailFails++
+			retries++
+			stats.TotalRetries++
+
+			if retries >= retryLimit {
+				r.print("[Review: %s] Guardrail retry limit (%d) reached, moving to next review", reviewPrompt.Name, retryLimit)
+				break
+			}
+
+			// Inject guardrail failures into the review prompt for next attempt
+			failedResults := guardrail.GetFailedResults(results)
+			currentPrompt = guardrail.InjectFailures(currentPrompt, failedResults, r.settings.OutputTruncateChars)
+
+			r.log("[Review: %s] Guardrails failed, retry %d/%d", reviewPrompt.Name, retries, retryLimit)
 		}
+
+		r.print("[Review: %s] Complete", reviewPrompt.Name)
 	}
 
 	return stats, nil

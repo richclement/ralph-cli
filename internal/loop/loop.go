@@ -146,6 +146,8 @@ func (r *Runner) Run(ctx context.Context) int {
 					r.log("Fail action: %s for %s", res.Guardrail.FailAction, res.Guardrail.Command)
 				}
 				loopsSinceLastReview++
+				// Note: continue skips the increment at the end of the loop, so we
+				// increment here. When guardrails pass, we increment at the bottom.
 				continue
 			}
 			r.print("All guardrails passed")
@@ -213,11 +215,7 @@ func (r *Runner) buildPrompt(failedResults []guardrail.Result, iteration int) (s
 
 	prompt := basePrompt
 	if len(failedResults) > 0 {
-		// Apply each failed guardrail's action sequentially (matching Python behavior)
-		for _, result := range failedResults {
-			failureMessage := guardrail.FormatFailureMessage(result, r.opts.Settings.OutputTruncateChars)
-			prompt = guardrail.ApplyFailAction(prompt, failureMessage, result.Guardrail.FailAction)
-		}
+		prompt = guardrail.InjectFailures(prompt, failedResults, r.opts.Settings.OutputTruncateChars)
 	}
 
 	if r.opts.Settings.IncludeIterationCountInPrompt {

@@ -117,7 +117,7 @@ func (r *Runner) generateLogFilename(iteration int, slug string, slugCounts map[
 }
 
 // print writes status output that should always be visible.
-func (r *Runner) print(format string, args ...interface{}) {
+func (r *Runner) print(format string, args ...any) {
 	_, _ = fmt.Fprintf(r.Stderr, format+"\n", args...)
 }
 
@@ -204,6 +204,16 @@ func GetFailedResults(results []Result) []Result {
 		}
 	}
 	return failed
+}
+
+// InjectFailures applies all failed guardrail results to a prompt using their fail actions.
+// Returns the modified prompt with all failure messages injected.
+func InjectFailures(prompt string, failedResults []Result, truncateLimit int) string {
+	for _, result := range failedResults {
+		failureMessage := FormatFailureMessage(result, truncateLimit)
+		prompt = ApplyFailAction(prompt, failureMessage, result.Guardrail.FailAction)
+	}
+	return prompt
 }
 
 // FormatFailureMessage formats a single guardrail failure for inclusion in the prompt.
