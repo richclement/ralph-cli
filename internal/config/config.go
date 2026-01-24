@@ -18,14 +18,15 @@ const (
 
 // Settings represents the runtime configuration.
 type Settings struct {
-	MaximumIterations             int         `json:"maximumIterations"`
-	CompletionResponse            string      `json:"completionResponse"`
-	OutputTruncateChars           int         `json:"outputTruncateChars"`
-	StreamAgentOutput             bool        `json:"streamAgentOutput"`
-	IncludeIterationCountInPrompt bool        `json:"includeIterationCountInPrompt"`
-	Agent                         AgentConfig `json:"agent"`
-	Guardrails                    []Guardrail `json:"guardrails"`
-	SCM                           *SCMConfig  `json:"scm,omitempty"`
+	MaximumIterations             int            `json:"maximumIterations"`
+	CompletionResponse            string         `json:"completionResponse"`
+	OutputTruncateChars           int            `json:"outputTruncateChars"`
+	StreamAgentOutput             bool           `json:"streamAgentOutput"`
+	IncludeIterationCountInPrompt bool           `json:"includeIterationCountInPrompt"`
+	Agent                         AgentConfig    `json:"agent"`
+	Guardrails                    []Guardrail    `json:"guardrails"`
+	SCM                           *SCMConfig     `json:"scm,omitempty"`
+	Reviews                       *ReviewsConfig `json:"reviews,omitempty"`
 }
 
 // AgentConfig defines the agent command and flags.
@@ -45,6 +46,22 @@ type Guardrail struct {
 type SCMConfig struct {
 	Command string   `json:"command"`
 	Tasks   []string `json:"tasks"`
+}
+
+// ReviewsConfig defines automated review cycles configuration.
+type ReviewsConfig struct {
+	ReviewAfter         int            `json:"reviewAfter"`
+	GuardrailRetryLimit int            `json:"guardrailRetryLimit"`
+	Prompts             []ReviewPrompt `json:"prompts"`
+	// PromptsOmitted tracks whether prompts was omitted (nil) vs explicitly empty.
+	// When true, default prompts should be used.
+	PromptsOmitted bool `json:"-"`
+}
+
+// ReviewPrompt defines a single review prompt in the cycle.
+type ReviewPrompt struct {
+	Name   string `json:"name"`
+	Prompt string `json:"prompt"`
 }
 
 // CLIOverrides captures CLI flags that can override settings.
@@ -91,6 +108,11 @@ func Load(path string) (Settings, error) {
 	}
 	if settings.OutputTruncateChars == 0 {
 		settings.OutputTruncateChars = DefaultOutputTruncateChars
+	}
+
+	// Detect if reviews.prompts was omitted (nil slice means omitted, empty slice means explicit [])
+	if settings.Reviews != nil && settings.Reviews.Prompts == nil {
+		settings.Reviews.PromptsOmitted = true
 	}
 
 	return settings, nil
@@ -226,6 +248,39 @@ func deepMerge(settings *Settings, data []byte) error {
 		}
 	}
 
+	// Handle reviews object (recursive merge)
+	if v, ok := local["reviews"]; ok {
+		var reviewsLocal map[string]json.RawMessage
+		if err := json.Unmarshal(v, &reviewsLocal); err != nil {
+			return fmt.Errorf("reviews: %w", err)
+		}
+		if settings.Reviews == nil {
+			settings.Reviews = &ReviewsConfig{PromptsOmitted: true}
+		}
+		if ra, ok := reviewsLocal["reviewAfter"]; ok {
+			var val int
+			if err := json.Unmarshal(ra, &val); err != nil {
+				return fmt.Errorf("reviews.reviewAfter: %w", err)
+			}
+			settings.Reviews.ReviewAfter = val
+		}
+		if grl, ok := reviewsLocal["guardrailRetryLimit"]; ok {
+			var val int
+			if err := json.Unmarshal(grl, &val); err != nil {
+				return fmt.Errorf("reviews.guardrailRetryLimit: %w", err)
+			}
+			settings.Reviews.GuardrailRetryLimit = val
+		}
+		if prompts, ok := reviewsLocal["prompts"]; ok {
+			var val []ReviewPrompt
+			if err := json.Unmarshal(prompts, &val); err != nil {
+				return fmt.Errorf("reviews.prompts: %w", err)
+			}
+			settings.Reviews.Prompts = val // arrays replace
+			settings.Reviews.PromptsOmitted = false
+		}
+	}
+
 	return nil
 }
 
@@ -277,5 +332,62 @@ func (s *Settings) Validate() error {
 		return fmt.Errorf("scm.command must be configured when scm.tasks is non-empty")
 	}
 
+	// Validate reviews config
+	if s.Reviews != nil {
+		if s.Reviews.ReviewAfter < 0 {
+			return fmt.Errorf("reviews.reviewAfter must be non-negative, got %d", s.Reviews.ReviewAfter)
+		}
+		if s.Reviews.GuardrailRetryLimit < 0 {
+			return fmt.Errorf("reviews.guardrailRetryLimit must be non-negative, got %d", s.Reviews.GuardrailRetryLimit)
+		}
+		for i, p := range s.Reviews.Prompts {
+			if p.Name == "" {
+				return fmt.Errorf("reviews.prompts[%d].name must not be empty", i)
+			}
+			if p.Prompt == "" {
+				return fmt.Errorf("reviews.prompts[%d].prompt must not be empty", i)
+			}
+		}
+	}
+
 	return nil
+}
+
+// DefaultReviewPrompts returns the default review prompts per the PRD.
+func DefaultReviewPrompts() []ReviewPrompt {
+	return []ReviewPrompt{
+		{
+			Name:   "detailed",
+			Prompt: "Review your implementation for correctness, edge cases, and error handling.",
+		},
+		{
+			Name:   "architecture",
+			Prompt: "Step back and review the overall design. Are we solving the right problem the right way?",
+		},
+		{
+			Name:   "security",
+			Prompt: "Review for security vulnerabilities: injection, auth, data exposure, and input validation.",
+		},
+		{
+			Name:   "codeHealth",
+			Prompt: "Review for code health: naming, structure, duplication, and simplicity.",
+		},
+	}
+}
+
+// ReviewsEnabled returns true if review cycles are configured and enabled.
+func (r *ReviewsConfig) ReviewsEnabled() bool {
+	if r == nil || r.ReviewAfter == 0 {
+		return false
+	}
+	// Enabled if prompts were omitted (use defaults) or prompts array is non-empty
+	return r.PromptsOmitted || len(r.Prompts) > 0
+}
+
+// GetPrompts returns the effective review prompts (custom or defaults).
+func (r *ReviewsConfig) GetPrompts() []ReviewPrompt {
+	if r.PromptsOmitted || len(r.Prompts) == 0 {
+		return DefaultReviewPrompts()
+	}
+	return r.Prompts
 }

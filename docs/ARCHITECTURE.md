@@ -11,8 +11,9 @@ and optionally executes SCM tasks (commit/push) after guardrails pass.
 3. Run the agent command and capture full output (optionally streaming).
 4. Run guardrails; on failure, feed truncated output into the next prompt
    according to each guardrail's fail action.
-5. If guardrails pass, optionally run SCM tasks.
-6. Check completion response; stop when matched or exit after max iterations.
+5. If guardrails pass and review threshold reached, run review cycle.
+6. If guardrails pass, optionally run SCM tasks.
+7. Check completion response; stop when matched or exit after max iterations.
 
 ## Key Packages
 - `cmd/ralph/main.go` sets up CLI subcommands (`init` and `run`), signal
@@ -28,7 +29,9 @@ and optionally executes SCM tasks (commit/push) after guardrails pass.
 - `internal/guardrail` runs guardrail commands, writes full logs to `.ralph/`,
   truncates output for prompt feedback, and applies fail actions.
 - `internal/loop` orchestrates iterations, prompt construction, guardrails,
-  SCM tasks, and completion detection.
+  review cycles, SCM tasks, and completion detection.
+- `internal/review` runs review cycles with configurable prompts and
+  guardrail retries.
 - `internal/scm` runs SCM tasks and uses the agent to generate commit messages.
 - `internal/response` extracts `<response>...</response>` and determines
   completion.
@@ -178,6 +181,72 @@ strings and are never truncated.
 
 Slugs replace non-alphanumeric characters with `_`, trim edges, and truncate to
 50 chars; duplicate slugs get numeric suffixes.
+
+## Review Cycles
+
+Review cycles implement the "Rule of 5" concept: forcing agents to review their
+work multiple times from different angles leads to significantly better output.
+
+### Configuration
+
+```json
+{
+  "reviews": {
+    "reviewAfter": 10,
+    "guardrailRetryLimit": 3,
+    "prompts": [
+      {"name": "detailed", "prompt": "Review for correctness..."},
+      {"name": "architecture", "prompt": "Review the overall design..."}
+    ]
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `reviewAfter` | Iterations between review cycles (0 = disabled) |
+| `guardrailRetryLimit` | Max retries per review prompt when guardrails fail |
+| `prompts` | Array of review prompts (omit for defaults, empty `[]` disables) |
+
+### Default Prompts
+
+When `prompts` is omitted, these 4 defaults are used:
+- **detailed**: Review for correctness, edge cases, and error handling
+- **architecture**: Review overall design and problem approach
+- **security**: Review for vulnerabilities (injection, auth, data exposure)
+- **codeHealth**: Review naming, structure, duplication, simplicity
+
+### Review Cycle Flow
+
+```
+for each reviewPrompt in prompts:
+    retries = 0
+    currentPrompt = reviewPrompt.prompt
+    loop:
+        run agent with currentPrompt
+        run guardrails
+        if guardrails pass:
+            break  // next review prompt
+        retries++
+        if retries >= guardrailRetryLimit:
+            log warning, break  // next review prompt
+        inject guardrail failure into currentPrompt
+```
+
+### Key Design Decisions
+
+1. **Review iterations do NOT count toward maxIterations** - Reviews happen
+   within outer loop iterations, not as separate iterations.
+
+2. **Reviews run after guardrails pass** - Only trigger when guardrails are
+   green and the loop count threshold is met.
+
+3. **Guardrails run after each review prompt** - If agent makes changes during
+   review, guardrails validate before proceeding.
+
+4. **Guardrail failures inject into review prompt** - Not the main prompt.
+
+5. **Deterministic ordering** - Prompts array ensures consistent execution.
 
 ## Completion Detection
 Completion is detected only after guardrails pass. The response parser searches

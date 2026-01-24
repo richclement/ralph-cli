@@ -687,3 +687,305 @@ func TestLoad_GuardrailWithHint(t *testing.T) {
 		t.Errorf("Guardrails[2].Hint = %q, want empty string", s.Guardrails[2].Hint)
 	}
 }
+
+func TestLoad_ReviewsConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	content := `{
+		"agent": {"command": "claude"},
+		"reviews": {
+			"reviewAfter": 10,
+			"guardrailRetryLimit": 3,
+			"prompts": [
+				{"name": "detailed", "prompt": "Review for correctness."},
+				{"name": "security", "prompt": "Review for security."}
+			]
+		}
+	}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if s.Reviews == nil {
+		t.Fatal("Reviews should not be nil")
+	}
+	if s.Reviews.ReviewAfter != 10 {
+		t.Errorf("Reviews.ReviewAfter = %d, want 10", s.Reviews.ReviewAfter)
+	}
+	if s.Reviews.GuardrailRetryLimit != 3 {
+		t.Errorf("Reviews.GuardrailRetryLimit = %d, want 3", s.Reviews.GuardrailRetryLimit)
+	}
+	if len(s.Reviews.Prompts) != 2 {
+		t.Errorf("Reviews.Prompts length = %d, want 2", len(s.Reviews.Prompts))
+	}
+	if s.Reviews.Prompts[0].Name != "detailed" {
+		t.Errorf("Reviews.Prompts[0].Name = %q, want detailed", s.Reviews.Prompts[0].Name)
+	}
+	if s.Reviews.PromptsOmitted {
+		t.Error("Reviews.PromptsOmitted should be false when prompts are specified")
+	}
+}
+
+func TestLoad_ReviewsPromptsOmitted(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	content := `{
+		"agent": {"command": "claude"},
+		"reviews": {
+			"reviewAfter": 5
+		}
+	}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if s.Reviews == nil {
+		t.Fatal("Reviews should not be nil")
+	}
+	if !s.Reviews.PromptsOmitted {
+		t.Error("Reviews.PromptsOmitted should be true when prompts are omitted")
+	}
+}
+
+func TestLoad_ReviewsPromptsExplicitEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	content := `{
+		"agent": {"command": "claude"},
+		"reviews": {
+			"reviewAfter": 5,
+			"prompts": []
+		}
+	}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if s.Reviews == nil {
+		t.Fatal("Reviews should not be nil")
+	}
+	if s.Reviews.PromptsOmitted {
+		t.Error("Reviews.PromptsOmitted should be false when prompts is explicitly []")
+	}
+	if len(s.Reviews.Prompts) != 0 {
+		t.Errorf("Reviews.Prompts should be empty, got %d", len(s.Reviews.Prompts))
+	}
+}
+
+func TestReviewsEnabled(t *testing.T) {
+	tests := []struct {
+		name    string
+		reviews *ReviewsConfig
+		want    bool
+	}{
+		{"nil config", nil, false},
+		{"zero reviewAfter", &ReviewsConfig{ReviewAfter: 0}, false},
+		{"prompts omitted (use defaults)", &ReviewsConfig{ReviewAfter: 5, PromptsOmitted: true}, true},
+		{"explicit prompts", &ReviewsConfig{ReviewAfter: 5, Prompts: []ReviewPrompt{{Name: "test", Prompt: "test"}}}, true},
+		{"explicit empty prompts (disabled)", &ReviewsConfig{ReviewAfter: 5, Prompts: []ReviewPrompt{}, PromptsOmitted: false}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got bool
+			if tt.reviews == nil {
+				got = false
+			} else {
+				got = tt.reviews.ReviewsEnabled()
+			}
+			if got != tt.want {
+				t.Errorf("ReviewsEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetPrompts_DefaultsWhenOmitted(t *testing.T) {
+	r := &ReviewsConfig{ReviewAfter: 5, PromptsOmitted: true}
+	prompts := r.GetPrompts()
+	defaults := DefaultReviewPrompts()
+
+	if len(prompts) != len(defaults) {
+		t.Errorf("GetPrompts() length = %d, want %d", len(prompts), len(defaults))
+	}
+	for i := range prompts {
+		if prompts[i].Name != defaults[i].Name {
+			t.Errorf("prompts[%d].Name = %q, want %q", i, prompts[i].Name, defaults[i].Name)
+		}
+	}
+}
+
+func TestGetPrompts_CustomPrompts(t *testing.T) {
+	custom := []ReviewPrompt{{Name: "custom", Prompt: "Custom review"}}
+	r := &ReviewsConfig{ReviewAfter: 5, Prompts: custom}
+	prompts := r.GetPrompts()
+
+	if len(prompts) != 1 {
+		t.Errorf("GetPrompts() length = %d, want 1", len(prompts))
+	}
+	if prompts[0].Name != "custom" {
+		t.Errorf("prompts[0].Name = %q, want custom", prompts[0].Name)
+	}
+}
+
+func TestDefaultReviewPrompts(t *testing.T) {
+	prompts := DefaultReviewPrompts()
+	if len(prompts) != 4 {
+		t.Errorf("DefaultReviewPrompts() length = %d, want 4", len(prompts))
+	}
+
+	expectedNames := []string{"detailed", "architecture", "security", "codeHealth"}
+	for i, name := range expectedNames {
+		if prompts[i].Name != name {
+			t.Errorf("prompts[%d].Name = %q, want %q", i, prompts[i].Name, name)
+		}
+		if prompts[i].Prompt == "" {
+			t.Errorf("prompts[%d].Prompt should not be empty", i)
+		}
+	}
+}
+
+func TestValidate_ReviewsConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		reviews *ReviewsConfig
+		wantErr string
+	}{
+		{
+			name:    "valid config",
+			reviews: &ReviewsConfig{ReviewAfter: 5, GuardrailRetryLimit: 3, Prompts: []ReviewPrompt{{Name: "test", Prompt: "test"}}},
+			wantErr: "",
+		},
+		{
+			name:    "negative reviewAfter",
+			reviews: &ReviewsConfig{ReviewAfter: -1},
+			wantErr: "reviews.reviewAfter",
+		},
+		{
+			name:    "negative guardrailRetryLimit",
+			reviews: &ReviewsConfig{ReviewAfter: 5, GuardrailRetryLimit: -1},
+			wantErr: "reviews.guardrailRetryLimit",
+		},
+		{
+			name:    "empty prompt name",
+			reviews: &ReviewsConfig{ReviewAfter: 5, Prompts: []ReviewPrompt{{Name: "", Prompt: "test"}}},
+			wantErr: "reviews.prompts[0].name",
+		},
+		{
+			name:    "empty prompt text",
+			reviews: &ReviewsConfig{ReviewAfter: 5, Prompts: []ReviewPrompt{{Name: "test", Prompt: ""}}},
+			wantErr: "reviews.prompts[0].prompt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewDefaults()
+			s.Agent.Command = "claude"
+			s.Reviews = tt.reviews
+
+			err := s.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("Validate() returned error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("Validate() should return error for %s", tt.name)
+				} else if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error should contain %q, got: %v", tt.wantErr, err)
+				}
+			}
+		})
+	}
+}
+
+func TestDeepMerge_ReviewsConfig(t *testing.T) {
+	s := NewDefaults()
+	s.Agent.Command = "claude"
+
+	localJSON := `{
+		"reviews": {
+			"reviewAfter": 10,
+			"guardrailRetryLimit": 5,
+			"prompts": [{"name": "custom", "prompt": "Custom review"}]
+		}
+	}`
+	if err := deepMerge(&s, []byte(localJSON)); err != nil {
+		t.Fatal(err)
+	}
+
+	if s.Reviews == nil {
+		t.Fatal("Reviews should not be nil")
+	}
+	if s.Reviews.ReviewAfter != 10 {
+		t.Errorf("Reviews.ReviewAfter = %d, want 10", s.Reviews.ReviewAfter)
+	}
+	if s.Reviews.GuardrailRetryLimit != 5 {
+		t.Errorf("Reviews.GuardrailRetryLimit = %d, want 5", s.Reviews.GuardrailRetryLimit)
+	}
+	if len(s.Reviews.Prompts) != 1 {
+		t.Errorf("Reviews.Prompts length = %d, want 1", len(s.Reviews.Prompts))
+	}
+	if s.Reviews.PromptsOmitted {
+		t.Error("Reviews.PromptsOmitted should be false after explicit prompts in merge")
+	}
+}
+
+func TestDeepMerge_ReviewsInvalidType(t *testing.T) {
+	tests := []struct {
+		name      string
+		localJSON string
+		wantErr   string
+	}{
+		{
+			name:      "reviews wrong type",
+			localJSON: `{"reviews": "not-an-object"}`,
+			wantErr:   "reviews:",
+		},
+		{
+			name:      "reviewAfter wrong type",
+			localJSON: `{"reviews": {"reviewAfter": "not-an-int"}}`,
+			wantErr:   "reviews.reviewAfter:",
+		},
+		{
+			name:      "guardrailRetryLimit wrong type",
+			localJSON: `{"reviews": {"guardrailRetryLimit": "not-an-int"}}`,
+			wantErr:   "reviews.guardrailRetryLimit:",
+		},
+		{
+			name:      "prompts wrong type",
+			localJSON: `{"reviews": {"prompts": "not-an-array"}}`,
+			wantErr:   "reviews.prompts:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewDefaults()
+			err := deepMerge(&s, []byte(tt.localJSON))
+			if err == nil {
+				t.Errorf("deepMerge() should return error for %s", tt.name)
+				return
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("deepMerge() error = %q, want to contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}

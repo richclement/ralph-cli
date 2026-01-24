@@ -56,6 +56,9 @@ ralph-cli/
 │   ├── loop/
 │   │   ├── loop.go           # Main loop orchestration
 │   │   └── loop_test.go
+│   ├── review/
+│   │   ├── review.go         # Review cycle execution
+│   │   └── review_test.go
 │   ├── scm/
 │   │   ├── scm.go            # SCM task execution
 │   │   └── scm_test.go
@@ -248,14 +251,15 @@ Example:
 **Settings Structs:**
 ```go
 type Settings struct {
-    MaximumIterations  int          `json:"maximumIterations"`
-    CompletionResponse string       `json:"completionResponse"`
-    OutputTruncateChars int         `json:"outputTruncateChars"`
-    StreamAgentOutput  bool         `json:"streamAgentOutput"`
+    MaximumIterations  int             `json:"maximumIterations"`
+    CompletionResponse string          `json:"completionResponse"`
+    OutputTruncateChars int            `json:"outputTruncateChars"`
+    StreamAgentOutput  bool            `json:"streamAgentOutput"`
     IncludeIterationCountInPrompt bool `json:"includeIterationCountInPrompt"`
-    Agent              AgentConfig  `json:"agent"`
-    Guardrails         []Guardrail  `json:"guardrails"`
-    SCM                *SCMConfig   `json:"scm,omitempty"`
+    Agent              AgentConfig     `json:"agent"`
+    Guardrails         []Guardrail     `json:"guardrails"`
+    SCM                *SCMConfig      `json:"scm,omitempty"`
+    Reviews            *ReviewsConfig  `json:"reviews,omitempty"`
 }
 
 type AgentConfig struct {
@@ -426,6 +430,148 @@ Optional. If configured and guardrails pass:
    - For commit, use `-am` with the agent-provided message (e.g., `git commit -am "<message>"`).
 
 If guardrails fail, SCM tasks do not run.
+
+---
+
+## Review Cycles
+
+Review cycles implement the "Rule of 5" concept: forcing agents to review their
+work multiple times from different angles leads to significantly better output.
+
+### Configuration
+
+```json
+{
+  "reviews": {
+    "reviewAfter": 10,
+    "guardrailRetryLimit": 3,
+    "prompts": [
+      {"name": "detailed", "prompt": "Review for correctness, edge cases, and error handling."},
+      {"name": "architecture", "prompt": "Step back and review the overall design."},
+      {"name": "security", "prompt": "Review for security vulnerabilities."},
+      {"name": "codeHealth", "prompt": "Review for naming, structure, duplication, simplicity."}
+    ]
+  }
+}
+```
+
+### Settings Structs
+
+```go
+type ReviewsConfig struct {
+    ReviewAfter         int            `json:"reviewAfter"`
+    GuardrailRetryLimit int            `json:"guardrailRetryLimit"`
+    Prompts             []ReviewPrompt `json:"prompts"`
+    PromptsOmitted      bool           `json:"-"` // internal tracking
+}
+
+type ReviewPrompt struct {
+    Name   string `json:"name"`
+    Prompt string `json:"prompt"`
+}
+```
+
+### Configuration Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `reviewAfter` | int | Iterations between review cycles. `0` = disabled. |
+| `guardrailRetryLimit` | int | Max retries per review prompt when guardrails fail. |
+| `prompts` | array | Ordered list of review prompts. Empty `[]` disables. |
+| `prompts[].name` | string | Display name for logging/output. |
+| `prompts[].prompt` | string | The review prompt sent to the agent. |
+
+### Default Prompts
+
+When `prompts` is omitted (not explicitly empty), these 4 defaults are used:
+
+| Name | Prompt |
+|------|--------|
+| `detailed` | Review your implementation for correctness, edge cases, and error handling. |
+| `architecture` | Step back and review the overall design. Are we solving the right problem the right way? |
+| `security` | Review for security vulnerabilities: injection, auth, data exposure, and input validation. |
+| `codeHealth` | Review for code health: naming, structure, duplication, and simplicity. |
+
+### Outer Loop Integration
+
+```
+loopsSinceLastReview := 0
+
+for iteration := 1; iteration <= maxIterations; iteration++ {
+    1. Run agent with prompt
+
+    2. Run guardrails (if configured)
+       - On fail: inject into prompt per failAction, continue
+
+    3. Run review cycle if:
+       - reviews configured (reviewAfter > 0 AND prompts available)
+       - AND loopsSinceLastReview >= reviewAfter
+       - AND guardrails passed (or no guardrails)
+
+       → Execute review cycle
+       → loopsSinceLastReview = 0
+
+    4. Run SCM tasks (if configured AND guardrailsPassed)
+
+    5. Check completion → exit if DONE
+
+    loopsSinceLastReview++
+}
+```
+
+### Review Cycle Detail
+
+```
+for _, reviewPrompt := range reviews.prompts {
+    retries := 0
+    currentPrompt := reviewPrompt.prompt
+    for {
+        run agent with currentPrompt
+        run guardrails
+        if guardrails pass {
+            break  // next review prompt
+        }
+        retries++
+        if retries >= guardrailRetryLimit {
+            log warning, move to next review prompt
+            break
+        }
+        inject guardrail failure into currentPrompt
+    }
+}
+```
+
+### Key Design Decisions
+
+1. **Review iterations do NOT count toward maxIterations** - maxIterations governs
+   the outer loop only. Reviews happen within each outer loop iteration.
+
+2. **Reviews run after guardrails pass** - Only trigger review cycle when guardrails
+   are green and loop count threshold is met.
+
+3. **Guardrails run after each review prompt** - If agent makes changes during
+   review, guardrails validate before proceeding.
+
+4. **Guardrail failures inject into review prompt** - Not the main prompt.
+
+5. **Deterministic prompt ordering** - Prompts array ensures consistent execution.
+
+6. **No convergence detection** - Run all review prompts in sequence rather than
+   detecting "no changes needed".
+
+### Logging
+
+- Show `[Review: <name>]` prefix in output during review cycles
+- Log review cycle start/end with summary stats
+
+### Example Scenario
+
+With `maxIterations: 50` and `reviewAfter: 10`:
+- Outer loop runs iterations 1-10
+- After iteration 10 (if guardrails pass), review cycle runs all 4 prompts
+- Counter resets, outer loop continues iterations 11-20
+- After iteration 20 (if guardrails pass), another review cycle
+- Maximum of 5 review cycles possible within 50 iterations
 
 ---
 
