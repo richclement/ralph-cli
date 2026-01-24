@@ -89,6 +89,11 @@ func Run() error {
 		return err
 	}
 
+	reviews, err := promptReviews(reader)
+	if err != nil {
+		return err
+	}
+
 	scm, err := promptSCM(reader)
 	if err != nil {
 		return err
@@ -102,6 +107,9 @@ func Run() error {
 	settings.CompletionResponse = completionResponse
 	settings.IncludeIterationCountInPrompt = includeIterationCount
 	settings.Guardrails = guardrails
+	if reviews != nil {
+		settings.Reviews = reviews
+	}
 	if scm != nil {
 		settings.SCM = scm
 	}
@@ -348,6 +356,127 @@ func promptSCM(reader *bufio.Reader) (*config.SCMConfig, error) {
 		Command: scmCommand,
 		Tasks:   tasks,
 	}, nil
+}
+
+func promptReviews(reader *bufio.Reader) (*config.ReviewsConfig, error) {
+	configureReviews, err := prompt(reader, "Configure review cycles? (y/N): ")
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.ToLower(configureReviews) != "y" {
+		return nil, nil
+	}
+
+	reviewAfter, err := promptReviewAfter(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	retryLimit, err := promptGuardrailRetryLimit(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	prompts, err := promptReviewPrompts(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return &config.ReviewsConfig{
+		ReviewAfter:         reviewAfter,
+		GuardrailRetryLimit: retryLimit,
+		Prompts:             prompts,
+	}, nil
+}
+
+func promptReviewAfter(reader *bufio.Reader) (int, error) {
+	for {
+		input, err := promptWithDefault(reader, "  Review after iterations", "5")
+		if err != nil {
+			return 0, err
+		}
+		parsed, parseErr := strconv.Atoi(input)
+		if parseErr != nil {
+			fmt.Fprintln(os.Stderr, "  Please enter a valid number")
+			continue
+		}
+		if parsed < 0 {
+			fmt.Fprintln(os.Stderr, "  Must be 0 or greater")
+			continue
+		}
+		return parsed, nil
+	}
+}
+
+func promptGuardrailRetryLimit(reader *bufio.Reader) (int, error) {
+	for {
+		input, err := promptWithDefault(reader, "  Guardrail retry limit", "3")
+		if err != nil {
+			return 0, err
+		}
+		parsed, parseErr := strconv.Atoi(input)
+		if parseErr != nil {
+			fmt.Fprintln(os.Stderr, "  Please enter a valid number")
+			continue
+		}
+		if parsed < 0 {
+			fmt.Fprintln(os.Stderr, "  Must be 0 or greater")
+			continue
+		}
+		return parsed, nil
+	}
+}
+
+func promptReviewPrompts(reader *bufio.Reader) ([]config.ReviewPrompt, error) {
+	// Show default prompts with multi-line formatting for readability
+	fmt.Println("  Default review prompts:")
+	for _, p := range config.DefaultReviewPrompts() {
+		fmt.Printf("    %s:\n      %s\n", p.Name, p.Prompt)
+	}
+
+	fmt.Print("  Use default review prompts? [Y/n]: ")
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		if err == io.EOF {
+			fmt.Println("\nAborted.")
+			exitFunc(130)
+			return nil, nil
+		}
+		return nil, err
+	}
+	useDefaults := strings.TrimSpace(line)
+
+	if useDefaults == "" || strings.ToLower(useDefaults) == "y" {
+		return config.DefaultReviewPrompts(), nil
+	}
+
+	// Custom prompt loop
+	var prompts []config.ReviewPrompt
+	for {
+		nameInput, err := prompt(reader, "  Add review prompt (leave blank to finish):\n    Name: ")
+		if err != nil {
+			return nil, err
+		}
+		if nameInput == "" {
+			break
+		}
+
+		promptInput, err := prompt(reader, "    Prompt: ")
+		if err != nil {
+			return nil, err
+		}
+		if promptInput == "" {
+			break
+		}
+
+		prompts = append(prompts, config.ReviewPrompt{
+			Name:   nameInput,
+			Prompt: promptInput,
+		})
+	}
+
+	return prompts, nil
 }
 
 func writeSettings(settings config.Settings) error {

@@ -89,7 +89,7 @@ func TestRun_HappyPath(t *testing.T) {
 		defer mockTTY(true)()
 
 		// Input: agent command, flags, max iterations (default), completion (default),
-		// iteration count (default), one guardrail with hint, exit guardrail loop, decline SCM
+		// iteration count (default), one guardrail with hint, exit guardrail loop, decline reviews, decline SCM
 		input := strings.Join([]string{
 			"claude",                // agent command
 			"--model,opus",          // agent flags (comma-separated)
@@ -100,6 +100,7 @@ func TestRun_HappyPath(t *testing.T) {
 			"APPEND",                // fail action
 			"Fix lint errors only.", // hint
 			"",                      // exit guardrail loop
+			"N",                     // don't configure reviews
 			"N",                     // don't configure SCM
 		}, "\n") + "\n"
 
@@ -175,6 +176,7 @@ func TestRun_WithSCM(t *testing.T) {
 			"",       // default completion
 			"",       // default include iteration count
 			"",       // no guardrails
+			"N",      // no reviews
 			"y",      // configure SCM
 			"git",    // SCM command
 			"commit", // SCM tasks
@@ -297,6 +299,7 @@ func TestRun_ExistingSettings_AcceptOverwrite(t *testing.T) {
 			"",          // default completion
 			"",          // default include iteration count
 			"",          // no guardrails
+			"N",         // no reviews
 			"N",         // no SCM
 		}, "\n") + "\n"
 
@@ -427,6 +430,7 @@ func TestRun_MalformedExistingSettings(t *testing.T) {
 			"",          // default completion
 			"",          // default include iteration count
 			"",          // no guardrails
+			"N",         // no reviews
 			"N",         // no SCM
 		}, "\n") + "\n"
 
@@ -484,6 +488,7 @@ func TestRun_EmptyAgentCommand_Reprompt(t *testing.T) {
 			"",       // default completion
 			"",       // default include iteration count
 			"",       // no guardrails
+			"N",      // no reviews
 			"N",      // no SCM
 		}, "\n") + "\n"
 
@@ -543,6 +548,7 @@ func TestRun_InvalidFailAction_Reprompt(t *testing.T) {
 			"APPEND",    // valid action
 			"",          // hint (empty)
 			"",          // exit guardrail loop
+			"N",         // no reviews
 			"N",         // no SCM
 		}, "\n") + "\n"
 
@@ -599,6 +605,7 @@ func TestRun_FailActionCaseNormalization(t *testing.T) {
 			"append",    // lowercase - should be normalized
 			"",          // hint (empty)
 			"",          // exit guardrail loop
+			"N",         // no reviews
 			"N",         // no SCM
 		}, "\n") + "\n"
 
@@ -644,6 +651,7 @@ func TestRun_GuardrailLoopExit(t *testing.T) {
 			"PREPEND",
 			"",  // hint for second guardrail (empty)
 			"",  // exit loop (empty command)
+			"N", // no reviews
 			"N", // no SCM
 		}, "\n") + "\n"
 
@@ -683,6 +691,7 @@ func TestRun_SCMDeclined(t *testing.T) {
 			"",       // default completion
 			"",       // default include iteration count
 			"",       // no guardrails
+			"N",      // no reviews
 			"N",      // decline SCM
 		}, "\n") + "\n"
 
@@ -812,6 +821,7 @@ func TestRun_WhitespaceTrimming(t *testing.T) {
 			"",                        // default completion
 			"",                        // default include iteration count
 			"",                        // no guardrails
+			"N",                       // no reviews
 			"y",                       // configure SCM
 			"git",                     // SCM command
 			"  commit  ,  push  ,  ",  // tasks with whitespace
@@ -883,6 +893,7 @@ func TestRun_InvalidMaxIterations_Reprompt(t *testing.T) {
 			"",       // default completion
 			"",       // default include iteration count
 			"",       // no guardrails
+			"N",      // no reviews
 			"N",      // no SCM
 		}, "\n") + "\n"
 
@@ -937,6 +948,7 @@ func TestRun_ZeroGuardrails(t *testing.T) {
 			"",       // default completion
 			"",       // default include iteration count
 			"",       // immediately exit guardrails (no guardrails added)
+			"N",      // no reviews
 			"N",      // no SCM
 		}, "\n") + "\n"
 
@@ -976,6 +988,7 @@ func TestRun_CustomCompletionResponse(t *testing.T) {
 			"FINISHED", // custom completion response
 			"",         // default include iteration count
 			"",         // no guardrails
+			"N",        // no reviews
 			"N",        // no SCM
 		}, "\n") + "\n"
 
@@ -1015,6 +1028,7 @@ func TestRun_IncludeIterationCountPrompt(t *testing.T) {
 			"",       // default completion
 			"y",      // include iteration count
 			"",       // no guardrails
+			"N",      // no reviews
 			"N",      // no SCM
 		}, "\n") + "\n"
 
@@ -1037,6 +1051,391 @@ func TestRun_IncludeIterationCountPrompt(t *testing.T) {
 
 		if !settings.IncludeIterationCountInPrompt {
 			t.Errorf("includeIterationCountInPrompt = %v, want true", settings.IncludeIterationCountInPrompt)
+		}
+	})
+}
+
+func TestRun_WithReviews_DefaultPrompts(t *testing.T) {
+	withTempDir(t, func(dir string) {
+		captureExit()
+		defer restoreExit()
+		defer mockTTY(true)()
+
+		input := strings.Join([]string{
+			"claude", // agent command
+			"",       // no flags
+			"",       // default iterations
+			"",       // default completion
+			"",       // default include iteration count
+			"",       // no guardrails
+			"y",      // configure reviews
+			"",       // default review after (5)
+			"",       // default guardrail retry limit (3)
+			"",       // use default prompts (Y)
+			"N",      // no SCM
+		}, "\n") + "\n"
+
+		// Capture stdout to verify default prompts are displayed
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		withStdin(t, input, func() {
+			err := Run()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+
+		w.Close()
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		os.Stdout = oldStdout
+		output := buf.String()
+
+		// Verify default prompts are displayed
+		if !strings.Contains(output, "Default review prompts:") {
+			t.Errorf("expected 'Default review prompts:' in output, got: %s", output)
+		}
+		for _, p := range config.DefaultReviewPrompts() {
+			if !strings.Contains(output, p.Name+":") {
+				t.Errorf("expected prompt name %q in output", p.Name)
+			}
+			if !strings.Contains(output, p.Prompt) {
+				t.Errorf("expected prompt text %q in output", p.Prompt)
+			}
+		}
+
+		data, err := os.ReadFile(".ralph/settings.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var settings config.Settings
+		if err := json.Unmarshal(data, &settings); err != nil {
+			t.Fatal(err)
+		}
+
+		if settings.Reviews == nil {
+			t.Fatal("reviews should not be nil")
+		}
+		if settings.Reviews.ReviewAfter != 5 {
+			t.Errorf("reviews.reviewAfter = %d, want 5", settings.Reviews.ReviewAfter)
+		}
+		if settings.Reviews.GuardrailRetryLimit != 3 {
+			t.Errorf("reviews.guardrailRetryLimit = %d, want 3", settings.Reviews.GuardrailRetryLimit)
+		}
+		if len(settings.Reviews.Prompts) != 4 {
+			t.Errorf("reviews.prompts length = %d, want 4 default prompts", len(settings.Reviews.Prompts))
+		}
+
+		// Verify default prompts are present
+		expectedNames := []string{"detailed", "architecture", "security", "codeHealth"}
+		for i, name := range expectedNames {
+			if settings.Reviews.Prompts[i].Name != name {
+				t.Errorf("reviews.prompts[%d].name = %q, want %q", i, settings.Reviews.Prompts[i].Name, name)
+			}
+		}
+	})
+}
+
+func TestRun_WithReviews_CustomPrompts(t *testing.T) {
+	withTempDir(t, func(dir string) {
+		captureExit()
+		defer restoreExit()
+		defer mockTTY(true)()
+
+		input := strings.Join([]string{
+			"claude",                  // agent command
+			"",                        // no flags
+			"",                        // default iterations
+			"",                        // default completion
+			"",                        // default include iteration count
+			"",                        // no guardrails
+			"y",                       // configure reviews
+			"10",                      // custom review after
+			"2",                       // custom guardrail retry limit
+			"n",                       // don't use defaults
+			"correctness",             // first prompt name
+			"Check for logic errors.", // first prompt text
+			"tests",                   // second prompt name
+			"Review test coverage.",   // second prompt text
+			"",                        // exit prompt loop (blank name)
+			"N",                       // no SCM
+		}, "\n") + "\n"
+
+		withStdin(t, input, func() {
+			err := Run()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+
+		data, err := os.ReadFile(".ralph/settings.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var settings config.Settings
+		if err := json.Unmarshal(data, &settings); err != nil {
+			t.Fatal(err)
+		}
+
+		if settings.Reviews == nil {
+			t.Fatal("reviews should not be nil")
+		}
+		if settings.Reviews.ReviewAfter != 10 {
+			t.Errorf("reviews.reviewAfter = %d, want 10", settings.Reviews.ReviewAfter)
+		}
+		if settings.Reviews.GuardrailRetryLimit != 2 {
+			t.Errorf("reviews.guardrailRetryLimit = %d, want 2", settings.Reviews.GuardrailRetryLimit)
+		}
+		if len(settings.Reviews.Prompts) != 2 {
+			t.Fatalf("reviews.prompts length = %d, want 2", len(settings.Reviews.Prompts))
+		}
+
+		if settings.Reviews.Prompts[0].Name != "correctness" {
+			t.Errorf("prompts[0].name = %q, want %q", settings.Reviews.Prompts[0].Name, "correctness")
+		}
+		if settings.Reviews.Prompts[0].Prompt != "Check for logic errors." {
+			t.Errorf("prompts[0].prompt = %q, want %q", settings.Reviews.Prompts[0].Prompt, "Check for logic errors.")
+		}
+		if settings.Reviews.Prompts[1].Name != "tests" {
+			t.Errorf("prompts[1].name = %q, want %q", settings.Reviews.Prompts[1].Name, "tests")
+		}
+	})
+}
+
+func TestRun_ReviewsDeclined(t *testing.T) {
+	withTempDir(t, func(dir string) {
+		captureExit()
+		defer restoreExit()
+		defer mockTTY(true)()
+
+		input := strings.Join([]string{
+			"claude", // agent command
+			"",       // no flags
+			"",       // default iterations
+			"",       // default completion
+			"",       // default include iteration count
+			"",       // no guardrails
+			"N",      // decline reviews
+			"N",      // no SCM
+		}, "\n") + "\n"
+
+		withStdin(t, input, func() {
+			err := Run()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+
+		data, err := os.ReadFile(".ralph/settings.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var settings config.Settings
+		if err := json.Unmarshal(data, &settings); err != nil {
+			t.Fatal(err)
+		}
+
+		if settings.Reviews != nil {
+			t.Error("reviews should be nil when declined")
+		}
+	})
+}
+
+func TestRun_ReviewAfter_InvalidInput_Reprompt(t *testing.T) {
+	withTempDir(t, func(dir string) {
+		captureExit()
+		defer restoreExit()
+		defer mockTTY(true)()
+
+		// Capture stderr
+		oldStderr := os.Stderr
+		r, w, _ := os.Pipe()
+		os.Stderr = w
+
+		input := strings.Join([]string{
+			"claude", // agent command
+			"",       // no flags
+			"",       // default iterations
+			"",       // default completion
+			"",       // default include iteration count
+			"",       // no guardrails
+			"y",      // configure reviews
+			"abc",    // invalid - not a number
+			"-5",     // invalid - negative
+			"7",      // valid
+			"",       // default retry limit
+			"",       // use default prompts
+			"N",      // no SCM
+		}, "\n") + "\n"
+
+		withStdin(t, input, func() {
+			err := Run()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+
+		w.Close()
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		os.Stderr = oldStderr
+		stderrOutput := buf.String()
+
+		// Verify error messages
+		if !strings.Contains(stderrOutput, "valid number") {
+			t.Errorf("expected 'valid number' in stderr, got: %s", stderrOutput)
+		}
+		if !strings.Contains(stderrOutput, "0 or greater") {
+			t.Errorf("expected '0 or greater' in stderr, got: %s", stderrOutput)
+		}
+
+		// Verify final value
+		data, err := os.ReadFile(".ralph/settings.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var settings config.Settings
+		if err := json.Unmarshal(data, &settings); err != nil {
+			t.Fatal(err)
+		}
+
+		if settings.Reviews == nil {
+			t.Fatal("reviews should not be nil")
+		}
+		if settings.Reviews.ReviewAfter != 7 {
+			t.Errorf("reviews.reviewAfter = %d, want 7", settings.Reviews.ReviewAfter)
+		}
+	})
+}
+
+func TestRun_GuardrailRetryLimit_InvalidInput_Reprompt(t *testing.T) {
+	withTempDir(t, func(dir string) {
+		captureExit()
+		defer restoreExit()
+		defer mockTTY(true)()
+
+		// Capture stderr
+		oldStderr := os.Stderr
+		r, w, _ := os.Pipe()
+		os.Stderr = w
+
+		input := strings.Join([]string{
+			"claude", // agent command
+			"",       // no flags
+			"",       // default iterations
+			"",       // default completion
+			"",       // default include iteration count
+			"",       // no guardrails
+			"y",      // configure reviews
+			"",       // default review after
+			"xyz",    // invalid - not a number
+			"-1",     // invalid - negative
+			"5",      // valid
+			"",       // use default prompts
+			"N",      // no SCM
+		}, "\n") + "\n"
+
+		withStdin(t, input, func() {
+			err := Run()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+
+		w.Close()
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		os.Stderr = oldStderr
+		stderrOutput := buf.String()
+
+		// Verify error messages
+		if !strings.Contains(stderrOutput, "valid number") {
+			t.Errorf("expected 'valid number' in stderr, got: %s", stderrOutput)
+		}
+		if !strings.Contains(stderrOutput, "0 or greater") {
+			t.Errorf("expected '0 or greater' in stderr, got: %s", stderrOutput)
+		}
+
+		// Verify final value
+		data, err := os.ReadFile(".ralph/settings.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var settings config.Settings
+		if err := json.Unmarshal(data, &settings); err != nil {
+			t.Fatal(err)
+		}
+
+		if settings.Reviews == nil {
+			t.Fatal("reviews should not be nil")
+		}
+		if settings.Reviews.GuardrailRetryLimit != 5 {
+			t.Errorf("reviews.guardrailRetryLimit = %d, want 5", settings.Reviews.GuardrailRetryLimit)
+		}
+	})
+}
+
+func TestRun_CustomPrompts_EmptyPromptExitsLoop(t *testing.T) {
+	withTempDir(t, func(dir string) {
+		captureExit()
+		defer restoreExit()
+		defer mockTTY(true)()
+
+		input := strings.Join([]string{
+			"claude",            // agent command
+			"",                  // no flags
+			"",                  // default iterations
+			"",                  // default completion
+			"",                  // default include iteration count
+			"",                  // no guardrails
+			"y",                 // configure reviews
+			"",                  // default review after
+			"",                  // default retry limit
+			"n",                 // custom prompts
+			"firstReview",       // first prompt name
+			"Check for errors.", // first prompt text
+			"secondReview",      // second prompt name (will exit on empty prompt)
+			"",                  // empty prompt - exits loop
+			"N",                 // no SCM
+		}, "\n") + "\n"
+
+		withStdin(t, input, func() {
+			err := Run()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+
+		// Verify final settings
+		data, err := os.ReadFile(".ralph/settings.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var settings config.Settings
+		if err := json.Unmarshal(data, &settings); err != nil {
+			t.Fatal(err)
+		}
+
+		if settings.Reviews == nil {
+			t.Fatal("reviews should not be nil")
+		}
+		// Only the first prompt should be saved (second was abandoned)
+		if len(settings.Reviews.Prompts) != 1 {
+			t.Fatalf("expected 1 prompt, got %d", len(settings.Reviews.Prompts))
+		}
+		if settings.Reviews.Prompts[0].Name != "firstReview" {
+			t.Errorf("prompt name = %q, want %q", settings.Reviews.Prompts[0].Name, "firstReview")
+		}
+		if settings.Reviews.Prompts[0].Prompt != "Check for errors." {
+			t.Errorf("prompt = %q, want %q", settings.Reviews.Prompts[0].Prompt, "Check for errors.")
 		}
 	})
 }
