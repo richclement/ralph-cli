@@ -1075,12 +1075,36 @@ func TestRun_WithReviews_DefaultPrompts(t *testing.T) {
 			"N",      // no SCM
 		}, "\n") + "\n"
 
+		// Capture stdout to verify default prompts are displayed
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
 		withStdin(t, input, func() {
 			err := Run()
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
+
+		w.Close()
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		os.Stdout = oldStdout
+		output := buf.String()
+
+		// Verify default prompts are displayed
+		if !strings.Contains(output, "Default review prompts:") {
+			t.Errorf("expected 'Default review prompts:' in output, got: %s", output)
+		}
+		for _, p := range config.DefaultReviewPrompts() {
+			if !strings.Contains(output, p.Name+":") {
+				t.Errorf("expected prompt name %q in output", p.Name)
+			}
+			if !strings.Contains(output, p.Prompt) {
+				t.Errorf("expected prompt text %q in output", p.Prompt)
+			}
+		}
 
 		data, err := os.ReadFile(".ralph/settings.json")
 		if err != nil {
