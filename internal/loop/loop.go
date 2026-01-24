@@ -145,9 +145,6 @@ func (r *Runner) Run(ctx context.Context) int {
 				for _, res := range failedResults {
 					r.log("Fail action: %s for %s", res.Guardrail.FailAction, res.Guardrail.Command)
 				}
-				loopsSinceLastReview++
-				// Note: continue skips the increment at the end of the loop, so we
-				// increment here. When guardrails pass, we increment at the bottom.
 				continue
 			}
 			r.print("All guardrails passed")
@@ -156,8 +153,10 @@ func (r *Runner) Run(ctx context.Context) int {
 		// Clear failed results since guardrails passed
 		failedResults = nil
 
+		// Increment review counter (only for successful iterations)
+		loopsSinceLastReview++
+
 		// Run review cycle if configured and threshold reached
-		// Note: we only reach here if guardrails passed (or there are none)
 		if reviewsEnabled && loopsSinceLastReview >= reviewAfter {
 			r.print("\n--- Starting review cycle ---")
 			stats, err := r.reviewRunner.Run(ctx, iteration)
@@ -190,8 +189,6 @@ func (r *Runner) Run(ctx context.Context) int {
 			return ExitSuccess
 		}
 		r.log("No completion detected, continuing")
-
-		loopsSinceLastReview++
 	}
 
 	r.print("Maximum iterations reached without completion response.")
