@@ -11,6 +11,7 @@ import (
 	"github.com/richclement/ralph-cli/internal/config"
 	"github.com/richclement/ralph-cli/internal/guardrail"
 	"github.com/richclement/ralph-cli/internal/response"
+	"github.com/richclement/ralph-cli/internal/review"
 	"github.com/richclement/ralph-cli/internal/scm"
 )
 
@@ -37,6 +38,7 @@ type Runner struct {
 	opts            Options
 	agentRunner     *agent.Runner
 	guardrailRunner *guardrail.Runner
+	reviewRunner    *review.Runner
 	scmRunner       *scm.Runner
 }
 
@@ -67,10 +69,15 @@ func NewRunner(opts Options) *Runner {
 	scmRunner.Stdout = opts.Stdout
 	scmRunner.Stderr = opts.Stderr
 
+	reviewRunner := review.NewRunner(opts.Settings, agentRunner, guardrailRunner, opts.Verbose)
+	reviewRunner.Stdout = opts.Stdout
+	reviewRunner.Stderr = opts.Stderr
+
 	return &Runner{
 		opts:            opts,
 		agentRunner:     agentRunner,
 		guardrailRunner: guardrailRunner,
+		reviewRunner:    reviewRunner,
 		scmRunner:       scmRunner,
 	}
 }
@@ -78,6 +85,14 @@ func NewRunner(opts Options) *Runner {
 // Run executes the main loop and returns the exit code.
 func (r *Runner) Run(ctx context.Context) int {
 	var failedResults []guardrail.Result
+	var loopsSinceLastReview int
+
+	// Check if reviews are enabled
+	reviewsEnabled := r.opts.Settings.Reviews != nil && r.opts.Settings.Reviews.ReviewsEnabled()
+	var reviewAfter int
+	if reviewsEnabled {
+		reviewAfter = r.opts.Settings.Reviews.ReviewAfter
+	}
 
 	for iteration := 1; iteration <= r.opts.Settings.MaximumIterations; iteration++ {
 		// Check for cancellation
@@ -138,7 +153,27 @@ func (r *Runner) Run(ctx context.Context) int {
 		// Clear failed results since guardrails passed
 		failedResults = nil
 
-		// Run SCM tasks after guardrails pass (before checking completion)
+		// Increment review counter (only for successful iterations)
+		loopsSinceLastReview++
+
+		// Run review cycle if configured and threshold reached
+		if reviewsEnabled && loopsSinceLastReview >= reviewAfter {
+			r.print("\n--- Starting review cycle ---")
+			stats, err := r.reviewRunner.Run(ctx, iteration)
+			if err != nil {
+				if ctx.Err() != nil {
+					return ExitSignalInterrupt
+				}
+				r.log("Review cycle error: %v", err)
+			} else {
+				r.log("Review cycle complete: %d prompts, %d retries, %d guardrail fails",
+					stats.PromptsRun, stats.TotalRetries, stats.GuardrailFails)
+			}
+			r.print("--- Review cycle complete ---\n")
+			loopsSinceLastReview = 0
+		}
+
+		// Run SCM tasks after guardrails pass (and reviews if any)
 		if r.opts.Settings.SCM != nil {
 			r.log("Running SCM tasks")
 			if err := r.scmRunner.Run(ctx, iteration); err != nil {
@@ -177,11 +212,7 @@ func (r *Runner) buildPrompt(failedResults []guardrail.Result, iteration int) (s
 
 	prompt := basePrompt
 	if len(failedResults) > 0 {
-		// Apply each failed guardrail's action sequentially (matching Python behavior)
-		for _, result := range failedResults {
-			failureMessage := guardrail.FormatFailureMessage(result, r.opts.Settings.OutputTruncateChars)
-			prompt = guardrail.ApplyFailAction(prompt, failureMessage, result.Guardrail.FailAction)
-		}
+		prompt = guardrail.InjectFailures(prompt, failedResults, r.opts.Settings.OutputTruncateChars)
 	}
 
 	if r.opts.Settings.IncludeIterationCountInPrompt {
@@ -193,13 +224,13 @@ func (r *Runner) buildPrompt(failedResults []guardrail.Result, iteration int) (s
 }
 
 // log writes verbose/debug output.
-func (r *Runner) log(format string, args ...interface{}) {
+func (r *Runner) log(format string, args ...any) {
 	if r.opts.Verbose {
 		_, _ = fmt.Fprintf(r.opts.Stderr, "[ralph] "+format+"\n", args...)
 	}
 }
 
 // print writes status output that should always be visible.
-func (r *Runner) print(format string, args ...interface{}) {
+func (r *Runner) print(format string, args ...any) {
 	_, _ = fmt.Fprintf(r.opts.Stderr, format+"\n", args...)
 }

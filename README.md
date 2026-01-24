@@ -153,6 +153,10 @@ Ralph supports the following CLI LLM agents with automatic flag detection:
   "scm": {
     "command": "git",
     "tasks": ["commit", "push"]
+  },
+  "reviews": {
+    "reviewAfter": 10,
+    "guardrailRetryLimit": 3
   }
 }
 ```
@@ -171,6 +175,9 @@ Ralph supports the following CLI LLM agents with automatic flag detection:
 | `guardrails` | `[]` | Array of guardrail commands |
 | `scm.command` | | SCM command (e.g., `git`) |
 | `scm.tasks` | `[]` | SCM tasks to run (e.g., `["commit", "push"]`) |
+| `reviews.reviewAfter` | `0` | Iterations between review cycles (0 = disabled) |
+| `reviews.guardrailRetryLimit` | `0` | Max retries per review prompt when guardrails fail |
+| `reviews.prompts` | defaults | Array of review prompts (omit for defaults) |
 
 ### Guardrail Configuration
 
@@ -197,6 +204,41 @@ Output (truncated):
 ```
 
 Hints are literal strings (no templating) and are never truncated.
+
+### Review Cycles (Rule of 5)
+
+Review cycles implement the "Rule of 5" concept: forcing agents to review their work multiple times from different angles leads to significantly better output quality.
+
+```json
+{
+  "reviews": {
+    "reviewAfter": 10,
+    "guardrailRetryLimit": 3,
+    "prompts": [
+      {"name": "detailed", "prompt": "Review for correctness, edge cases, and error handling."},
+      {"name": "architecture", "prompt": "Step back and review the overall design."},
+      {"name": "security", "prompt": "Review for security vulnerabilities."},
+      {"name": "codeHealth", "prompt": "Review for naming, structure, and simplicity."}
+    ]
+  }
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `reviewAfter` | `0` | Iterations between review cycles (0 = disabled) |
+| `guardrailRetryLimit` | `0` | Max retries per review prompt when guardrails fail (0 = run once, no retries) |
+| `prompts` | (4 defaults) | Custom review prompts (omit for defaults, empty `[]` disables) |
+
+**Default Prompts** (used when `prompts` is omitted):
+- **detailed**: Review for correctness, edge cases, and error handling
+- **architecture**: Review overall design and problem approach
+- **security**: Review for vulnerabilities (injection, auth, data exposure)
+- **codeHealth**: Review naming, structure, duplication, simplicity
+
+**Example:** With `reviewAfter: 10` and `maxIterations: 50`, reviews run after iterations 10, 20, 30, 40 (when guardrails pass). Each review cycle runs all 4 prompts sequentially with guardrail validation.
+
+Review iterations do **not** count toward `maxIterations`.
 
 ## Completion Detection
 
@@ -246,6 +288,7 @@ ralph-cli/
 │   ├── agent/          # Agent command execution
 │   ├── guardrail/      # Guardrail execution and logging
 │   ├── loop/           # Main loop orchestration
+│   ├── review/         # Review cycle execution
 │   ├── response/       # Completion response extraction
 │   ├── scm/            # SCM task execution
 │   └── stream/         # Agent output parsing and formatting
