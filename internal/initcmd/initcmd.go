@@ -429,10 +429,10 @@ func promptGuardrailRetryLimit(reader *bufio.Reader) (int, error) {
 }
 
 func promptReviewPrompts(reader *bufio.Reader) ([]config.ReviewPrompt, error) {
-	// Show default prompts
+	// Show default prompts with multi-line formatting for readability
 	fmt.Println("  Default review prompts:")
 	for _, p := range config.DefaultReviewPrompts() {
-		fmt.Printf("    %s: %s\n", p.Name, p.Prompt)
+		fmt.Printf("    %s:\n      %s\n", p.Name, p.Prompt)
 	}
 
 	useDefaults, err := promptWithDefault(reader, "  Use default review prompts?", "Y")
@@ -440,8 +440,7 @@ func promptReviewPrompts(reader *bufio.Reader) ([]config.ReviewPrompt, error) {
 		return nil, err
 	}
 
-	normalized := strings.ToLower(strings.TrimSpace(useDefaults))
-	if normalized == "y" || normalized == "yes" || normalized == "" {
+	if strings.ToLower(useDefaults) == "y" {
 		return config.DefaultReviewPrompts(), nil
 	}
 
