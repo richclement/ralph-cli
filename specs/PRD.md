@@ -56,9 +56,20 @@ ralph-cli/
 │   ├── loop/
 │   │   ├── loop.go           # Main loop orchestration
 │   │   └── loop_test.go
-│   └── scm/
-│       ├── scm.go            # SCM task execution
-│       └── scm_test.go
+│   ├── scm/
+│   │   ├── scm.go            # SCM task execution
+│   │   └── scm_test.go
+│   ├── response/
+│   │   ├── response.go       # Completion response extraction
+│   │   └── response_test.go
+│   └── stream/
+│       ├── parser.go         # Parser interface, agent detection
+│       ├── types.go          # Event model (EventToolStart, etc.)
+│       ├── formatter.go      # CLI display with tool correlation
+│       ├── processor.go      # Stream decode loop
+│       ├── claude.go         # Claude stream-json parser
+│       ├── codex.go          # Codex --json parser
+│       └── amp.go            # Amp --stream-json parser
 ├── .ralph/                   # Runtime directory (gitignored)
 ├── .golangci.yml             # Linter configuration
 ├── .gitignore
@@ -100,7 +111,7 @@ type RunCmd struct {
 - `ralph run` - Run the agent loop (default command)
 - `ralph --version` / `ralph -v` - Print version and exit
 
-The `run` command is marked as default (`default:"1"`), so `ralph -p "prompt"` works without explicitly typing `run`.
+The `run` command is marked as default (`default:"1"`), but flags must still follow the subcommand: `ralph run -p "prompt"`.
 
 **Version Handling:**
 Kong provides built-in version support. Set version at build time via `-ldflags`:
@@ -598,9 +609,107 @@ Use `log` package or simple `fmt.Fprintf(os.Stderr, "[ralph] ...")` for verbose 
 
 ## Agent Streaming Formats
 
+When streaming is enabled, agent output is parsed into a common Event model and
+formatted for display. Each agent has a dedicated parser.
+
+### Event Model
+
+Agent-specific JSON is normalized into these event types:
+
+| Event Type | Description |
+|------------|-------------|
+| `EventToolStart` | Tool invocation began (name, ID, input summary) |
+| `EventToolEnd` | Tool completed with output or error |
+| `EventText` | Assistant text output |
+| `EventResult` | Final completion with cost and token statistics |
+| `EventTodo` | Task list update from TodoWrite tool calls |
+| `EventProgress` | Status updates (session info) |
+
+Events include timestamps and tool correlation IDs. `EventResult` includes:
+- `Cost`: cumulative cost in USD
+- `InputTokens`, `OutputTokens`: token counts
+- `CacheReadTokens`, `CacheWriteTokens`: cache statistics
+
+### Formatter
+
+The Formatter renders events with visual indicators and tool correlation:
+
+```
+⏺ Read(/path/to/file.go)
+✅ Result ← Read (45 lines, 1234 chars)
+  ⎿  package main
+
+📋 Todo List
+  ✅ Read the file
+  🔄 Edit the code ← ACTIVE
+  ⏸️ Run tests
+  📊 Progress: 1/3 (33%)
+
+✅ Complete (cost: $5.76, tokens: 1.2M in (850K cached) / 45K out, tools: 58, errors: 4, time: 6m7s)
+```
+
+Configuration options:
+- `UseEmoji`: emoji indicators vs text markers (`[OK]`, `[ERR]`)
+- `UseColor`: ANSI color output (auto-detected via termenv)
+- `ShowTimestamp`: `[HH:MM:SS]` prefix on each line
+- `MaxOutputLines`, `MaxOutputChars`: truncation limits for tool output
+
+### Claude Streaming JSON
+
+Claude outputs NDJSON when `--output-format stream-json --verbose` is enabled:
+
+**System** (session start):
+```json
+{"type": "system", "session_id": "..."}
+```
+
+**Assistant** (text and tool use):
+```json
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "..."}]}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "...", "name": "...", "input": {...}}]}}
+```
+
+**User** (tool results):
+```json
+{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "...", "content": "...", "is_error": false}]}}
+```
+
+**Result**:
+```json
+{"type": "result", "result": "...", "total_cost_usd": 0.05, "usage": {"input_tokens": 1000, "output_tokens": 500, "cache_read_input_tokens": 800, "cache_creation_input_tokens": 0}}
+```
+
+TodoWrite tool calls are extracted as `EventTodo` with task items.
+
+### Codex Streaming JSON
+
+Codex outputs NDJSON when `--json` is enabled:
+
+**Thread Started**:
+```json
+{"type": "thread.started", "thread_id": "..."}
+```
+
+**Item Started** (command execution):
+```json
+{"type": "item.started", "item": {"id": "...", "type": "command_execution", "command": "..."}}
+```
+
+**Item Completed**:
+```json
+{"type": "item.completed", "item": {"id": "...", "type": "command_execution", "aggregated_output": "...", "exit_code": 0}}
+{"type": "item.completed", "item": {"id": "...", "type": "reasoning", "text": "..."}}
+{"type": "item.completed", "item": {"id": "...", "type": "agent_message", "text": "..."}}
+```
+
+**Turn Completed**:
+```json
+{"type": "turn.completed", "usage": {"input_tokens": 1000, "cached_input_tokens": 800, "output_tokens": 500}}
+```
+
 ### Amp Streaming JSON
 
-Amp outputs 5 message types as NDJSON when `--stream-json` is enabled:
+Amp outputs NDJSON when `--stream-json` is enabled:
 
 **System Init** (first message):
 ```json
@@ -620,7 +729,7 @@ Amp outputs 5 message types as NDJSON when `--stream-json` is enabled:
 
 **Result Success**:
 ```json
-{"type": "result", "subtype": "success", "result": "...", "duration_ms": 1234, "num_turns": 3, "usage": {"input_tokens": 100, "output_tokens": 50}}
+{"type": "result", "subtype": "success", "result": "...", "duration_ms": 1234, "num_turns": 3, "usage": {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 80, "cache_creation_input_tokens": 0}}
 ```
 
 **Result Error**:

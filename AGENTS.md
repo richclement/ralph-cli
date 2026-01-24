@@ -34,6 +34,7 @@ Internal packages:
 - `agent/` - Agent command execution with auto-inferred non-REPL flags (-p for claude, e for codex, -x for amp)
 - `guardrail/` - Guardrail execution, fail actions (APPEND/PREPEND/REPLACE), output truncation, log file generation
 - `scm/` - SCM task runner; commit task prompts agent for commit message
+- `stream/` - Streaming JSON parsers (Claude, Codex, Amp), event model, formatter with tool correlation and token stats
 
 ## Configuration
 

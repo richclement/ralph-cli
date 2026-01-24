@@ -2,6 +2,8 @@
 
 A deterministic outer loop that repeatedly runs a AI agent until it returns a completion response. Ralph enforces guardrails (build/lint/test) and optionally runs SCM commands when guardrails pass.
 
+Based on the [Ralph Wiggum](https://ghuntley.com/ralph/)  loop by Geoffrey Huntley.
+
 ## Prerequisites
 
 - Go 1.25+
@@ -9,7 +11,7 @@ A deterministic outer loop that repeatedly runs a AI agent until it returns a co
 
 ## Installation
 
-### Homebre
+### Homebrew
 
 ```bash
 brew install richclement/tap/ralph-cli
@@ -74,21 +76,20 @@ If a settings file already exists, it will show the current configuration and as
 
 ```bash
 # Run with inline prompt
-ralph "Fix the failing tests"
+ralph run -p "Fix the failing tests"
 
 # Run with prompt file
-ralph -f prompt.txt
+ralph run -f prompt.txt
 
 # With options
-ralph "Implement the feature. Respond with <response>COMPLETE</response> when done." -m 5 -c "<response>COMPLETE</response>" -V
+ralph run -p "Implement the feature" -m 5 -c "COMPLETE" -V
 ```
 
 ### CLI Flags
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `[prompt]` | | Prompt string (positional argument) |
-| `--prompt` | `-p` | Prompt string (flag alternative to positional) |
+| `--prompt` | `-p` | Prompt string to send to agent |
 | `--prompt-file` | `-f` | Path to file containing prompt text |
 | `--maximum-iterations` | `-m` | Maximum iterations before stopping |
 | `--completion-response` | `-c` | Completion response text (default: `DONE`) |
@@ -96,6 +97,8 @@ ralph "Implement the feature. Respond with <response>COMPLETE</response> when do
 | `--no-stream-agent-output` | | Disable streaming agent output |
 | `--verbose` | `-V` | Enable verbose/debug output |
 | `--version` | `-v` | Print version and exit |
+
+One of `--prompt` or `--prompt-file` is required (mutually exclusive).
 
 ## Configuration
 
@@ -205,6 +208,33 @@ Examples that match with default `completionResponse: "DONE"`:
 
 Completion is only checked when all guardrails pass.
 
+## Streaming Output
+
+When `streamAgentOutput` is enabled, Ralph parses agent JSON output and displays it with visual indicators:
+
+```
+⏺ Read(/path/to/file.go)
+✅ Result ← Read (45 lines, 1234 chars)
+  ⎿  package main
+      import "fmt"
+  ⎿  ... 43 more lines
+
+📋 Todo List
+  ✅ Read the file
+  🔄 Edit the code ← ACTIVE
+  ⏸️ Run tests
+  📊 Progress: 1/3 (33%)
+
+✅ Complete (cost: $5.76, tokens: 1.2M in (850K cached) / 45K out, tools: 58, errors: 4, time: 6m7s)
+```
+
+Features:
+- **Tool correlation**: Results are linked back to their originating tool calls
+- **Token tracking**: Input, output, and cache token counts with K/M suffixes
+- **Statistics**: Tool count, error count, and elapsed time per iteration
+- **Todo list display**: Task progress from TodoWrite tool calls
+- **Auto-detected color**: Uses termenv for terminal capability detection
+
 ## Architecture
 
 ```
@@ -216,10 +246,11 @@ ralph-cli/
 │   ├── agent/          # Agent command execution
 │   ├── guardrail/      # Guardrail execution and logging
 │   ├── loop/           # Main loop orchestration
+│   ├── response/       # Completion response extraction
 │   ├── scm/            # SCM task execution
 │   └── stream/         # Agent output parsing and formatting
 ├── .ralph/             # Runtime directory
-└── specs/              # PRD and implementation tasks
+└── specs/              # PRD and documentation
 ```
 
 ## Development

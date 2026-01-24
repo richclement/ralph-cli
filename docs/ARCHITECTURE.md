@@ -33,7 +33,8 @@ and optionally executes SCM tasks (commit/push) after guardrails pass.
 - `internal/response` extracts `<response>...</response>` and determines
   completion.
 - `internal/stream` provides parsers for agent streaming JSON formats (Claude,
-  Amp) and formats events for display.
+  Codex, Amp), normalizes output into a common event model, and formats events
+  for display with tool correlation and statistics tracking.
 
 ## Configuration and Precedence
 Settings are loaded in this order:
@@ -93,6 +94,72 @@ Codex has special handling:
 - Used for commit messages where plain text is needed
 - Omits `--json` for plain text output
 - `-o` writes response to file, which is read and cleaned up after execution
+
+## Stream Processing
+
+When streaming is enabled, agent output is parsed and formatted for display.
+The `internal/stream` package handles this with three components:
+
+### Event Model
+
+Agent-specific JSON formats are normalized into a common `Event` struct:
+
+| Event Type | Description |
+|------------|-------------|
+| `EventToolStart` | Tool invocation began (name, ID, input summary) |
+| `EventToolEnd` | Tool completed with output or error |
+| `EventText` | Assistant text output |
+| `EventResult` | Final completion with cost and token statistics |
+| `EventTodo` | Task list update from TodoWrite tool calls |
+| `EventProgress` | Status updates (session info, progress) |
+
+Events include timestamps, tool correlation IDs, and for `EventResult`:
+- `Cost`: cumulative cost in USD
+- `InputTokens`, `OutputTokens`: token counts
+- `CacheReadTokens`, `CacheWriteTokens`: cache statistics
+
+### Agent Parsers
+
+Each agent has a dedicated parser implementing the `Parser` interface:
+
+- **ClaudeParser**: Parses Claude Code `stream-json` format with tool_use,
+  tool_result, and result messages. Extracts TodoWrite calls as `EventTodo`.
+- **CodexParser**: Parses Codex `--json` format with thread/turn/item events.
+  Maps command_execution to tool events, reasoning and agent_message to text.
+- **AmpParser**: Parses Amp `--stream-json` format with system, assistant,
+  user, and result messages.
+
+### Formatter and Display
+
+The `Formatter` renders events with visual indicators and tool correlation:
+
+```
+⏺ Read(/path/to/file.go)
+✅ Result ← Read (45 lines, 1234 chars)
+  ⎿  package main
+      import "fmt"
+  ⎿  ... 43 more lines
+
+📋 Todo List
+  ✅ Read the file
+  🔄 Edit the code ← ACTIVE
+  ⏸️ Run tests
+  📊 Progress: 1/3 (33%)
+
+✅ Complete (cost: $5.76, tokens: 1.2M in (850K cached) / 45K out, tools: 58, errors: 4, time: 6m7s)
+```
+
+Configuration options (via `FormatterConfig`):
+- `UseEmoji`: emoji indicators vs text markers (`[OK]`, `[ERR]`)
+- `UseColor`: ANSI color output (auto-detected via termenv)
+- `ShowTimestamp`: `[HH:MM:SS]` prefix on each line
+- `MaxOutputLines`, `MaxOutputChars`: truncation limits for tool output
+- `ShowText`: display assistant text output
+- `Verbose`: show extra details and empty results
+
+Tool correlation tracks pending tool calls by ID and displays the correlation
+when results arrive (`Result ← Read`). Statistics (tool count, error count,
+elapsed time) accumulate across the iteration.
 
 ## Guardrails
 Guardrails run after each agent response. Each guardrail has:
