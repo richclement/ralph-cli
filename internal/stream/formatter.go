@@ -289,11 +289,62 @@ func (f *Formatter) displayCompletion(e *Event) {
 	}
 
 	sb.WriteString(f.green("Complete"))
-	sb.WriteString(f.dim(fmt.Sprintf(" (cost: $%.4f, tools: %d, errors: %d, time: %s)",
-		e.Cost, f.toolCount, f.errorCount, elapsed.Round(time.Second))))
+
+	// Build stats string
+	var stats []string
+
+	// Cost (always shown if non-zero)
+	if e.Cost > 0 {
+		stats = append(stats, fmt.Sprintf("cost: $%.2f", e.Cost))
+	}
+
+	// Token counts (shown if we have any)
+	if e.InputTokens > 0 || e.OutputTokens > 0 {
+		tokenStr := "tokens: " + formatTokenCount(e.InputTokens) + " in"
+		if e.CacheReadTokens > 0 {
+			tokenStr += " (" + formatTokenCount(e.CacheReadTokens) + " cached)"
+		}
+		tokenStr += " / " + formatTokenCount(e.OutputTokens) + " out"
+		stats = append(stats, tokenStr)
+	}
+
+	// Tool and error counts
+	stats = append(stats, fmt.Sprintf("tools: %d", f.toolCount))
+	stats = append(stats, fmt.Sprintf("errors: %d", f.errorCount))
+
+	// Elapsed time
+	stats = append(stats, fmt.Sprintf("time: %s", formatDuration(elapsed)))
+
+	sb.WriteString(f.dim(" (" + strings.Join(stats, ", ") + ")"))
 	sb.WriteString("\n")
 
 	fmt.Fprint(f.out, sb.String())
+}
+
+// formatTokenCount formats token counts with K/M suffixes
+func formatTokenCount(n int64) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.0fK", float64(n)/1_000)
+	default:
+		return fmt.Sprintf("%d", n)
+	}
+}
+
+// formatDuration formats duration in a human-readable way
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	m := int(d.Minutes())
+	s := int(d.Seconds()) % 60
+	if s == 0 {
+		return fmt.Sprintf("%dm", m)
+	}
+	return fmt.Sprintf("%dm%ds", m, s)
 }
 
 // displayTodo shows a task list update

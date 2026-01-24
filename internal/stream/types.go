@@ -50,6 +50,12 @@ type Event struct {
 	Cost      float64 // Cumulative cost at this point
 	CostDelta float64 // Cost of this specific operation
 
+	// Token tracking
+	InputTokens      int64 // Total input tokens
+	OutputTokens     int64 // Output tokens
+	CacheReadTokens  int64 // Tokens read from cache
+	CacheWriteTokens int64 // Tokens written to cache (creation)
+
 	// Todo events
 	TodoItems []TodoItem // Task list items (for EventTodo)
 }

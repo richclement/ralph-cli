@@ -153,6 +153,36 @@ func TestAmpParser_ParseResultSuccess(t *testing.T) {
 	if e.Result != "Task completed successfully" {
 		t.Errorf("Result = %q, want %q", e.Result, "Task completed successfully")
 	}
+	if e.InputTokens != 100 {
+		t.Errorf("InputTokens = %d, want 100", e.InputTokens)
+	}
+	if e.OutputTokens != 50 {
+		t.Errorf("OutputTokens = %d, want 50", e.OutputTokens)
+	}
+}
+
+func TestAmpParser_ParseResultWithCache(t *testing.T) {
+	p := NewAmpParser()
+	data := []byte(`{"type": "result", "subtype": "success", "result": "done", "usage": {"input_tokens": 1000, "output_tokens": 500, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 400}}`)
+
+	events, err := p.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	e := events[0]
+	if e.InputTokens != 1000 {
+		t.Errorf("InputTokens = %d, want 1000", e.InputTokens)
+	}
+	if e.OutputTokens != 500 {
+		t.Errorf("OutputTokens = %d, want 500", e.OutputTokens)
+	}
+	if e.CacheReadTokens != 400 {
+		t.Errorf("CacheReadTokens = %d, want 400", e.CacheReadTokens)
+	}
+	if e.CacheWriteTokens != 100 {
+		t.Errorf("CacheWriteTokens = %d, want 100", e.CacheWriteTokens)
+	}
 }
 
 func TestAmpParser_ParseResultError(t *testing.T) {

@@ -14,6 +14,14 @@ type claudeRawMessage struct {
 	Message   *claudeMessage `json:"message,omitempty"`
 	Result    string         `json:"result,omitempty"`
 	Cost      float64        `json:"total_cost_usd,omitempty"`
+	Usage     *claudeUsage   `json:"usage,omitempty"`
+}
+
+type claudeUsage struct {
+	InputTokens         int64 `json:"input_tokens"`
+	OutputTokens        int64 `json:"output_tokens"`
+	CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
+	CacheReadTokens     int64 `json:"cache_read_input_tokens"`
 }
 
 type claudeMessage struct {
@@ -64,14 +72,21 @@ func (p *ClaudeParser) Parse(data []byte) ([]*Event, error) {
 	case "result":
 		costDelta := raw.Cost - p.cumulativeCost
 		p.cumulativeCost = raw.Cost
-		return []*Event{{
+		event := &Event{
 			Type:       EventResult,
 			Timestamp:  now,
 			Result:     raw.Result,
 			Cost:       raw.Cost,
 			CostDelta:  costDelta,
 			IsComplete: true,
-		}}, nil
+		}
+		if raw.Usage != nil {
+			event.InputTokens = raw.Usage.InputTokens
+			event.OutputTokens = raw.Usage.OutputTokens
+			event.CacheReadTokens = raw.Usage.CacheReadTokens
+			event.CacheWriteTokens = raw.Usage.CacheCreationTokens
+		}
+		return []*Event{event}, nil
 	case "system":
 		// Could extract session info, tools list for verbose mode
 		return []*Event{{

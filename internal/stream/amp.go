@@ -55,8 +55,10 @@ type ampResult struct {
 }
 
 type ampUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens         int `json:"input_tokens"`
+	OutputTokens        int `json:"output_tokens"`
+	CacheCreationTokens int `json:"cache_creation_input_tokens"`
+	CacheReadTokens     int `json:"cache_read_input_tokens"`
 }
 
 // AmpParser implements Parser for Sourcegraph Amp
@@ -215,6 +217,14 @@ func (p *AmpParser) parseResult(data []byte, now time.Time) ([]*Event, error) {
 		} else {
 			event.Result = msg.Result
 		}
+	}
+
+	// Map usage fields to Event
+	if msg.Usage != nil {
+		event.InputTokens = int64(msg.Usage.InputTokens)
+		event.OutputTokens = int64(msg.Usage.OutputTokens)
+		event.CacheReadTokens = int64(msg.Usage.CacheReadTokens)
+		event.CacheWriteTokens = int64(msg.Usage.CacheCreationTokens)
 	}
 
 	return []*Event{event}, nil

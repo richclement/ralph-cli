@@ -407,6 +407,57 @@ func TestClaudeParser_TodoWriteEmpty(t *testing.T) {
 	}
 }
 
+func TestClaudeParser_ResultWithUsage(t *testing.T) {
+	p := NewClaudeParser()
+
+	input := `{"type":"result","result":"done","total_cost_usd":5.7556,"usage":{"input_tokens":1234567,"output_tokens":45000,"cache_creation_input_tokens":50000,"cache_read_input_tokens":800000}}`
+
+	events, err := p.Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+
+	e := events[0]
+	if e.Type != EventResult {
+		t.Errorf("Type = %v, want EventResult", e.Type)
+	}
+	if e.InputTokens != 1234567 {
+		t.Errorf("InputTokens = %d, want 1234567", e.InputTokens)
+	}
+	if e.OutputTokens != 45000 {
+		t.Errorf("OutputTokens = %d, want 45000", e.OutputTokens)
+	}
+	if e.CacheReadTokens != 800000 {
+		t.Errorf("CacheReadTokens = %d, want 800000", e.CacheReadTokens)
+	}
+	if e.CacheWriteTokens != 50000 {
+		t.Errorf("CacheWriteTokens = %d, want 50000", e.CacheWriteTokens)
+	}
+}
+
+func TestClaudeParser_ResultNoUsage(t *testing.T) {
+	p := NewClaudeParser()
+
+	input := `{"type":"result","result":"done","total_cost_usd":0.05}`
+
+	events, err := p.Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	e := events[0]
+	if e.InputTokens != 0 {
+		t.Errorf("InputTokens = %d, want 0", e.InputTokens)
+	}
+	if e.OutputTokens != 0 {
+		t.Errorf("OutputTokens = %d, want 0", e.OutputTokens)
+	}
+}
+
 func TestGetString(t *testing.T) {
 	m := map[string]any{
 		"str":    "value",
