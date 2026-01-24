@@ -37,3 +37,15 @@
 - Added support for Amp
 - Added guardrail `hint` field to allow custom hints to be included in the agent prompt when a guardrail fails
 - Improved completion response handling, `<response></response>` tags are no longer needed
+
+## 0.5.0 - 2025-01-23
+
+### Added
+
+- Improved output of streaming json content from AI Agent to improve dev's visibility into what the agent is doing
+- Added token counts (input, cached, output) to Completion line at the end of each Agent loop
+- Updated docs and README to fix out of date information
+
+### Fixed
+
+- Error where error code would be output when the Ralph loop completed successfully
