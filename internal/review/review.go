@@ -77,8 +77,8 @@ func (r *Runner) Run(ctx context.Context, iteration int) (Stats, error) {
 				if ctx.Err() != nil {
 					return stats, ctx.Err()
 				}
-				// Agent failure during review is non-fatal, log and continue
-				r.log("Agent error during review %q: %v", reviewPrompt.Name, err)
+				// Agent failure during review is non-fatal, print error and continue
+				r.print("[Review: %s] Agent error: %v", reviewPrompt.Name, err)
 			}
 
 			// Run guardrails if configured
@@ -97,13 +97,16 @@ func (r *Runner) Run(ctx context.Context, iteration int) (Stats, error) {
 
 			// Guardrails failed
 			stats.GuardrailFails++
-			retries++
-			stats.TotalRetries++
 
+			// Check if we can retry (retryLimit=0 means no retries allowed)
 			if retries >= retryLimit {
 				r.print("[Review: %s] Guardrail retry limit (%d) reached, moving to next review", reviewPrompt.Name, retryLimit)
 				break
 			}
+
+			// Do the retry
+			retries++
+			stats.TotalRetries++
 
 			// Inject guardrail failures into the review prompt for next attempt
 			failedResults := guardrail.GetFailedResults(results)

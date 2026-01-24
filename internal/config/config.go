@@ -380,14 +380,11 @@ func (r *ReviewsConfig) ReviewsEnabled() bool {
 	if r == nil || r.ReviewAfter == 0 {
 		return false
 	}
-	// Enabled if prompts were omitted (use defaults) or prompts array is non-empty
-	return r.PromptsOmitted || len(r.Prompts) > 0
+	// Enabled only when prompts array is non-empty
+	return len(r.Prompts) > 0
 }
 
-// GetPrompts returns the effective review prompts (custom or defaults).
+// GetPrompts returns the configured review prompts.
 func (r *ReviewsConfig) GetPrompts() []ReviewPrompt {
-	if r.PromptsOmitted || len(r.Prompts) == 0 {
-		return DefaultReviewPrompts()
-	}
 	return r.Prompts
 }

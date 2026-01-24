@@ -221,8 +221,8 @@ func TestRunner_GuardrailRetryLimitZero(t *testing.T) {
 		t.Errorf("GuardrailFails = %d, want 1", stats.GuardrailFails)
 	}
 
-	// Should have 1 retry counted (the failed attempt triggers retry counter)
-	if stats.TotalRetries != 1 {
-		t.Errorf("TotalRetries = %d, want 1", stats.TotalRetries)
+	// Should have 0 retries (retryLimit=0 means no retries allowed)
+	if stats.TotalRetries != 0 {
+		t.Errorf("TotalRetries = %d, want 0", stats.TotalRetries)
 	}
 }

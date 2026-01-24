@@ -795,7 +795,7 @@ func TestReviewsEnabled(t *testing.T) {
 	}{
 		{"nil config", nil, false},
 		{"zero reviewAfter", &ReviewsConfig{ReviewAfter: 0}, false},
-		{"prompts omitted (use defaults)", &ReviewsConfig{ReviewAfter: 5, PromptsOmitted: true}, true},
+		{"prompts omitted (disabled)", &ReviewsConfig{ReviewAfter: 5, PromptsOmitted: true}, false},
 		{"explicit prompts", &ReviewsConfig{ReviewAfter: 5, Prompts: []ReviewPrompt{{Name: "test", Prompt: "test"}}}, true},
 		{"explicit empty prompts (disabled)", &ReviewsConfig{ReviewAfter: 5, Prompts: []ReviewPrompt{}, PromptsOmitted: false}, false},
 	}
@@ -815,18 +815,12 @@ func TestReviewsEnabled(t *testing.T) {
 	}
 }
 
-func TestGetPrompts_DefaultsWhenOmitted(t *testing.T) {
+func TestGetPrompts_EmptyWhenOmitted(t *testing.T) {
 	r := &ReviewsConfig{ReviewAfter: 5, PromptsOmitted: true}
 	prompts := r.GetPrompts()
-	defaults := DefaultReviewPrompts()
 
-	if len(prompts) != len(defaults) {
-		t.Errorf("GetPrompts() length = %d, want %d", len(prompts), len(defaults))
-	}
-	for i := range prompts {
-		if prompts[i].Name != defaults[i].Name {
-			t.Errorf("prompts[%d].Name = %q, want %q", i, prompts[i].Name, defaults[i].Name)
-		}
+	if len(prompts) != 0 {
+		t.Errorf("GetPrompts() length = %d, want 0 when prompts omitted", len(prompts))
 	}
 }
 
