@@ -1389,21 +1389,21 @@ func TestRun_CustomPrompts_EmptyPromptExitsLoop(t *testing.T) {
 		defer mockTTY(true)()
 
 		input := strings.Join([]string{
-			"claude",                   // agent command
-			"",                         // no flags
-			"",                         // default iterations
-			"",                         // default completion
-			"",                         // default include iteration count
-			"",                         // no guardrails
-			"y",                        // configure reviews
-			"",                         // default review after
-			"",                         // default retry limit
-			"n",                        // custom prompts
-			"firstReview",              // first prompt name
-			"Check for errors.",        // first prompt text
-			"secondReview",             // second prompt name (will exit on empty prompt)
-			"",                         // empty prompt - exits loop
-			"N",                        // no SCM
+			"claude",            // agent command
+			"",                  // no flags
+			"",                  // default iterations
+			"",                  // default completion
+			"",                  // default include iteration count
+			"",                  // no guardrails
+			"y",                 // configure reviews
+			"",                  // default review after
+			"",                  // default retry limit
+			"n",                 // custom prompts
+			"firstReview",       // first prompt name
+			"Check for errors.", // first prompt text
+			"secondReview",      // second prompt name (will exit on empty prompt)
+			"",                  // empty prompt - exits loop
+			"N",                 // no SCM
 		}, "\n") + "\n"
 
 		withStdin(t, input, func() {
