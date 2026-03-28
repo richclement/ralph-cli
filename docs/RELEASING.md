@@ -4,7 +4,7 @@ summary: "Release checklist for ralph-cli (GitHub release + Homebrew tap)"
 
 # Releasing `ralph-cli`
 
-Always do **all** steps below (CI + changelog + tag + GitHub release artifacts + tap update + Homebrew sanity install). No partial releases.
+Always do **all** steps below (CI + changelog + tag + GitHub release artifacts + tap PR). No partial releases.
 
 Shortcut scripts (preferred, keep notes non-empty):
 ```sh
@@ -14,14 +14,14 @@ scripts/verify-release.sh X.Y.Z
 
 Assumptions:
 - Repo: `richclement/ralph-cli`
-- Tap repo: `../homebrew-tap` (tap: `richclement/tap`)
+- Tap repo: `richclement/homebrew-tap` (tap: `richclement/tap`)
 - Homebrew formula name: `ralph-cli` (installs the `ralph` binary)
 
 ## 0) Prereqs
 - Clean working tree on `main`.
 - Go toolchain installed (Go version comes from `go.mod`).
 - `make` works locally.
-- Access to the tap repo (e.g. `richclement/homebrew-tap`).
+- GitHub Actions secret `HOMEBREW_TAP_TOKEN` with write access to `richclement/homebrew-tap` contents and pull requests.
 
 ## 1) Verify build is green
 ```sh
@@ -47,51 +47,40 @@ git pull
 # commit changelog + any release tweaks
 git commit -am "release: vX.Y.Z"
 
-git tag -a vX.Y.Z -m "Release X.Y.Z"
-git push origin main --tags
+scripts/release.sh X.Y.Z
 ```
 
 ## 4) Verify GitHub release artifacts
-The tag push triggers `.github/workflows/release.yml` (GoReleaser). Ensure it completes successfully and the release has assets.
+The tag push triggers `.github/workflows/release.yml`. The workflow now:
+- runs `quality`
+- verifies native binaries on Linux, macOS, and Windows
+- cross-builds six archives
+- publishes or updates the GitHub Release
+- opens or updates a PR against `richclement/homebrew-tap`
 
 ```sh
 gh run list -L 5 --workflow release.yml
 gh release view vX.Y.Z
 ```
 
-Ensure GitHub release notes are not empty (mirror the changelog section).
+Ensure the release has:
+- non-empty notes
+- six platform archives
+- `checksums.txt`
 
-If the workflow needs a rerun:
-```sh
-gh workflow run release.yml -f tag=vX.Y.Z
-```
+If the workflow needs a rerun, use GitHub Actions rerun for the existing tag run.
 
-## 5) Update (or add) the Homebrew formula
-In the tap repo (assumed sibling at `../homebrew-tap`), create/update `Formula/ralph-cli.rb`.
+## 5) Review and merge the Homebrew tap PR
+The release workflow generates `Formula/ralph-cli.rb` from the release checksums and opens or updates a PR in `richclement/homebrew-tap`.
 
-Recommended formula shape (build-from-source, no binary assets needed):
-- `version "X.Y.Z"`
-- `url "https://github.com/richclement/ralph-cli/archive/refs/tags/vX.Y.Z.tar.gz"`
-- `sha256 "<sha256>"`
-- `depends_on "go" => :build`
-- Build:
-  - `system "go", "build", *std_go_args(ldflags: "-s -w -X main.version=#{version}"), "./cmd/ralph"`
+Verify:
+- PR branch is `ralph-cli-release-vX.Y.Z`
+- PR updates only `Formula/ralph-cli.rb`
+- PR body links back to the GitHub Release and includes the checksum table
 
-Compute the SHA256 for the tag tarball:
-```sh
-curl -L -o /tmp/ralph-cli.tar.gz https://github.com/richclement/ralph-cli/archive/refs/tags/vX.Y.Z.tar.gz
-shasum -a 256 /tmp/ralph-cli.tar.gz
-```
+Merge the tap PR once it looks correct.
 
-Commit + push in the tap repo:
-```sh
-cd ../homebrew-tap
-git add Formula/ralph-cli.rb
-git commit -m "ralph-cli vX.Y.Z"
-git push origin main
-```
-
-## 6) Sanity-check install from tap
+## 6) Optional sanity-check install after the tap PR merges
 ```sh
 brew update
 brew uninstall ralph-cli || true
@@ -99,7 +88,6 @@ brew untap richclement/tap || true
 brew tap richclement/tap
 brew install richclement/tap/ralph-cli
 brew test richclement/tap/ralph-cli
-
 ralph --version
 ```
 

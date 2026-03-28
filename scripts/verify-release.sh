@@ -38,13 +38,25 @@ if [[ -z "$release_body" ]]; then
   exit 2
 fi
 
-assets_count="$(gh release view "v$version" --json assets -q '.assets | length')"
-if [[ "$assets_count" -eq 0 ]]; then
-  echo "no GitHub release assets for v$version" >&2
-  exit 2
-fi
+expected_assets=(
+  "ralph_${version}_darwin_amd64.tar.gz"
+  "ralph_${version}_darwin_arm64.tar.gz"
+  "ralph_${version}_linux_amd64.tar.gz"
+  "ralph_${version}_linux_arm64.tar.gz"
+  "ralph_${version}_windows_amd64.zip"
+  "ralph_${version}_windows_arm64.zip"
+  "checksums.txt"
+)
 
-release_run_id="$(gh run list -L 20 --workflow release.yml --json databaseId,conclusion,headBranch -q ".[] | select(.headBranch==\"v$version\") | select(.conclusion==\"success\") | .databaseId" | head -n1)"
+assets="$(gh release view "v$version" --json assets -q '.assets[].name')"
+for asset in "${expected_assets[@]}"; do
+  if ! printf '%s\n' "$assets" | rg -x "$asset" >/dev/null; then
+    echo "missing release asset for v$version: $asset" >&2
+    exit 2
+  fi
+done
+
+release_run_id="$(gh run list -L 20 --workflow release.yml --json databaseId,conclusion,headBranch,event -q ".[] | select(.headBranch==\"v$version\") | select(.event==\"push\") | select(.conclusion==\"success\") | .databaseId" | head -n1)"
 if [[ -z "$release_run_id" ]]; then
   echo "release workflow not green for v$version" >&2
   exit 2
@@ -58,39 +70,25 @@ fi
 
 make ci
 
-sha_url="https://github.com/richclement/ralph-cli/archive/refs/tags/v${version}.tar.gz"
-sha_file="/tmp/ralph-cli-${version}.tar.gz"
-rm -f "$sha_file"
-curl -L -o "$sha_file" "$sha_url"
-sha256="$(shasum -a 256 "$sha_file" | awk '{print $1}')"
-
-formula_path="../homebrew-tap/Formula/ralph-cli.rb"
-if [[ ! -f "$formula_path" ]]; then
-  echo "missing formula at $formula_path" >&2
+tap_branch="ralph-cli-release-v$version"
+tap_pr_number="$(gh pr list --repo richclement/homebrew-tap --state all --head "richclement:${tap_branch}" --json number -q '.[0].number')"
+if [[ -z "$tap_pr_number" ]]; then
+  echo "no Homebrew tap PR found for branch $tap_branch" >&2
   exit 2
 fi
 
-formula_url="$(rg -m1 '^\s*url ' "$formula_path" | sed -E 's/\s*url "([^"]+)"/\1/' | xargs)"
-formula_sha="$(rg -m1 '^\s*sha256 ' "$formula_path" | sed -E 's/\s*sha256 "([^"]+)"/\1/' | xargs)"
-
-if [[ "$formula_url" != "$sha_url" ]]; then
-  echo "formula url mismatch: $formula_url" >&2
+tap_pr_branch="$(gh pr view "$tap_pr_number" --repo richclement/homebrew-tap --json headRefName -q .headRefName)"
+if [[ "$tap_pr_branch" != "$tap_branch" ]]; then
+  echo "unexpected tap PR branch: $tap_pr_branch" >&2
   exit 2
 fi
 
-if [[ "$formula_sha" != "$sha256" ]]; then
-  echo "formula sha mismatch: $formula_sha (expected $sha256)" >&2
+tap_pr_file="$(gh pr view "$tap_pr_number" --repo richclement/homebrew-tap --json files -q '.files[].path')"
+if ! printf '%s\n' "$tap_pr_file" | rg -x "Formula/ralph-cli.rb" >/dev/null; then
+  echo "tap PR does not update Formula/ralph-cli.rb" >&2
   exit 2
 fi
 
-brew update
-brew uninstall ralph-cli || true
-brew untap richclement/tap || true
-brew tap richclement/tap
-brew install richclement/tap/ralph-cli
-brew test richclement/tap/ralph-cli
-ralph --version
+rm -f "$notes_file"
 
-rm -f "$notes_file" "$sha_file"
-
-echo "Release v$version verified (CI, GitHub release notes/assets, Homebrew install/test)."
+echo "Release v$version verified (CI, GitHub release notes/assets, and Homebrew tap PR)."

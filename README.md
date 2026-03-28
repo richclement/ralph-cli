@@ -17,6 +17,8 @@ Based on the [Ralph Wiggum](https://ghuntley.com/ralph/)  loop by Geoffrey Huntl
 brew install richclement/tap/ralph-cli
 ```
 
+Releases are published from tag pushes matching `v*`. The release workflow builds platform archives, publishes the GitHub Release, and opens or updates a PR in `richclement/homebrew-tap`. That workflow requires a `HOMEBREW_TAP_TOKEN` secret with write access to the tap repo.
+
 ### Using go install
 
 ```bash
