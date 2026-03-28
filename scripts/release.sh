@@ -48,15 +48,10 @@ if git rev-parse "v$version" >/dev/null 2>&1; then
   echo "tag v$version already exists"
 else
   git tag -a "v$version" -m "Release $version"
-  git push origin main --tags
 fi
 
-if gh release view "v$version" >/dev/null 2>&1; then
-  gh release edit "v$version" --notes-file "$notes_file"
-else
-  gh release create "v$version" --notes-file "$notes_file"
-fi
+git push origin main --tags
 
 rm -f "$notes_file"
 
-echo "Release notes updated. Next: scripts/verify-release.sh $version"
+echo "Tag pushed. Monitor .github/workflows/release.yml for v$version, then review and merge the Homebrew tap PR."
