@@ -9,7 +9,6 @@ Always do **all** steps below (CI + changelog + tag + GitHub release artifacts +
 Shortcut scripts (preferred, keep notes non-empty):
 ```sh
 scripts/release.sh X.Y.Z
-scripts/verify-release.sh X.Y.Z
 ```
 
 Assumptions:
@@ -94,3 +93,4 @@ ralph --version
 ## Notes
 - The `ralph --version` command displays the version string.
 - Use tags + changelog as the source of truth for release history.
+- There is no separate local release verification script anymore. The GitHub Actions release workflow is the source of truth.
